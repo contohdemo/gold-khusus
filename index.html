@@ -57,21 +57,22 @@ const CONFIG={
 };
 CONFIG.LINES=[[CONFIG.MA_TYPE,CONFIG.FAST,'#f5c542'],[CONFIG.MA_TYPE,CONFIG.SLOW,'#4aa3ff']];
 
-/* ============ 2. STRATEGI (SMA CROSSOVER + ZONA S&D) ============ */
+/* ============ 2. STRATEGI ============ */
 function strategy(i,X){
   const t=CONFIG.MA_TYPE,F=CONFIG.FAST,S=CONFIG.SLOW,f=X[t](F),s=X[t](S),nm=t.toUpperCase();
   const up=j=>f[j-1]<=s[j-1]&&f[j]>s[j], dn=j=>f[j-1]>=s[j-1]&&f[j]<s[j];
-  if(up(i)) return buy(`${nm}${F} memotong ke atas ${nm}${S} di area Demand/Support`);
-  if(dn(i)) return sell(`${nm}${F} memotong ke bawah ${nm}${S} di area Supply/Resistance`);
+  if(up(i)) return buy(`${nm}${F} golden cross di zona Demand/Support`);
+  if(dn(i)) return sell(`${nm}${F} death cross di zona Supply/Resistance`);
   let j=i-1;while(j>S&&!up(j)&&!dn(j))j--;
   const last=j>S?(up(j)?'BUY':'SELL')+', '+(i-j)+' candle lalu':'belum ada';
-  return wait(`Menganalisis zona S&D. ${nm}${F} ${f[i]>s[i]?'di atas':'di bawah'} ${nm}${S}. Persilangan terakhir: ${last}`);
+  return wait(`Menganalisis market S&D. Persilangan terakhir: ${last}`);
 }
 const buy=(w,c=2)=>({sig:'BUY',why:w,conf:c}),sell=(w,c=2)=>({sig:'SELL',why:w,conf:c}),wait=w=>({sig:'WAIT',why:w,conf:0});
 
 /* ============ 3. MESIN UTAMA ============ */
 const $=q=>document.querySelector(q),f2=v=>v.toFixed(2),SEC={'1min':60,'5min':300,'15min':900,'1h':3600,'4h':14400};
 let KEY='',D=[],X,A,botOn=0,live=0,dirty=1,tf='1h',sg=null,pv,lastPoll=0,used=0,mouse=null,lastN=-1,ex;
+let zoomN=120, panOffset=0; // Variabel Zoom & Pan Chart
 const dk='td_used_'+new Date().toISOString().slice(0,10);try{used=+localStorage.getItem(dk)||0}catch(e){}
 const addUsed=()=>{used++;try{localStorage.setItem(dk,used)}catch(e){}};
 const mkA=l=>({live:l,bal:CONFIG.BALANCE,b0:CONFIG.BALANCE,pos:null,trades:[],last:'WAIT'});A=mkA(1);
@@ -80,18 +81,37 @@ const SMA=(a,p)=>a.map((_,i)=>{if(i<p-1)return NaN;let s=0;for(let j=i-p+1;j<=i;
 function RSI(c,p){const r=c.map(()=>50);let g=0,l=0;for(let i=1;i<c.length;i++){const d=c[i]-c[i-1];if(i<=p){g+=Math.max(d,0);l+=Math.max(-d,0);if(i==p){g/=p;l/=p;r[i]=100-100/(1+g/(l||1e-9))}}else{g=(g*(p-1)+Math.max(d,0))/p;l=(l*(p-1)+Math.max(-d,0))/p;r[i]=100-100/(1+g/(l||1e-9))}}return r}
 function calc(){const c=D.map(d=>d.c),m={},M=(k,f)=>m[k]||(m[k]=f());
 X={close:c,open:D.map(d=>d.o),high:D.map(d=>d.h),low:D.map(d=>d.l),ema:p=>M('e'+p,()=>EMA(c,p)),sma:p=>M('s'+p,()=>SMA(c,p)),rsi:(p=14)=>M('r'+p,()=>RSI(c,p)),
-macd:(a=12,b=26,s=9)=>M('m'+a+b+s,()=>{const ea=EMA(c,a),eb=EMA(c,b),l=ea.map((v,i)=>v-eb[i]),sn=EMA(l,s);return{line:l,signal:sn,hist:l.map((v,i)=>v-sn[i])}}),
-atr:(p=14)=>M('a'+p,()=>{let a=0;return D.map((d,i)=>{const t=i?Math.max(d.h-d.l,Math.abs(d.h-D[i-1].c),Math.abs(d.l-D[i-1].c)):d.h-d.l;return a=i<p?(a*i+t)/(i+1):(a*(p-1)+t)/p})}),
-bb:(p=20,k=2)=>M('b'+p+k,()=>{const mid=SMA(c,p),sd=c.map((_,i)=>{if(i<p-1)return NaN;let s=0;for(let j=i-p+1;j<=i;j++)s+=(c[j]-mid[i])**2;return Math.sqrt(s/p)});return{mid,up:mid.map((v,i)=>v+k*sd[i]),low:mid.map((v,i)=>v-k*sd[i])}})}}
+atr:(p=14)=>M('a'+p,()=>{let a=0;return D.map((d,i)=>{const t=i?Math.max(d.h-d.l,Math.abs(d.h-D[i-1].c),Math.abs(d.l-D[i-1].c)):d.h-d.l;return a=i<p?(a*i+t)/(i+1):(a*(p-1)+t)/p})})}
 function run(i){try{ex=null;return strategy(i,X)}catch(e){ex=e.message;return wait('Error strategi: '+e.message)}}
+
 let quiet=0;
-async function notify(t,b){if(!('Notification' in window)||Notification.permission!='granted')return;try{const r=await navigator.serviceWorker.getRegistration();if(r)r.showNotification(t,{body:b,icon:'icon-192.png',badge:'icon-192.png',tag:'gold-'+Date.now(),vibrate:[200,100,200]});else new Notification(t,{body:b})}catch(e){}}
+async function notify(t,b){
+  if(!('Notification' in window)||Notification.permission!='granted')return;
+  try{
+    const r=await navigator.serviceWorker.getRegistration();
+    if(r) r.showNotification(t,{body:b,icon:'icon-192.png',badge:'icon-192.png',tag:'gold-'+Date.now(),vibrate:[200,100,200]});
+    else new Notification(t,{body:b});
+  }catch(e){}
+}
+
 const sk=()=>'gold_state_'+tf;
 function save(){try{localStorage.setItem(sk(),JSON.stringify({botOn,bal:A.bal,b0:A.b0,last:A.last,lastT:A.lastT,pos:A.pos,trades:A.trades.slice(-200)}))}catch(e){}}
 function catchUp(){quiet=1;const n0=A.trades.length;let sigs=0;const from=A.lastT||D[D.length-2].t;for(let i=0;i<D.length-1;i++){if(D[i].t<=from)continue;manage(A,D[i].h,D[i].l,i);const b=A.last;onBar(A,i);if(A.last!=b&&A.last!='WAIT')sigs++;A.lastT=D[i].t}quiet=0;const dn=A.trades.length-n0;if(sigs||dn)notify('Gold Robot aktif lagi',`Selama aplikasi tertutup: ${sigs} sinyal, ${dn} trade selesai`)}
 function restore(){let S=null;try{S=JSON.parse(localStorage.getItem(sk())||'null')}catch(e){}if(!S)return;A=Object.assign(mkA(1),{bal:S.bal,b0:S.b0,last:S.last,lastT:S.lastT,pos:S.pos,trades:S.trades||[]});const ix=t=>D.findIndex(d=>d.t==t);if(A.pos)A.pos.i=ix(A.pos.t);A.trades.forEach(t=>{t.i=ix(t.t);t.j=ix(t.tj)});if(S.botOn){botOn=1;catchUp()}}
-function openP(A,dir,i){const e=D[i].c,sl=X.atr(14)[i]*CONFIG.SL_ATR,lot=Math.max(.01,Math.floor(A.bal*CONFIG.RISK_PCT/100/(sl*100)*100)/100);A.pos={dir,entry:e,sl:e-dir*sl,tp:e+dir*sl*CONFIG.RR,lot,i,t:D[i].t};if(A.live&&!quiet)notify((dir>0?'BUY':'SELL')+' dibuka XAU/USD',`Entry ${f2(e)} | TP ${f2(A.pos.tp)} | SL ${f2(A.pos.sl)} | ${lot} lot`)}
-function closeP(A,px,why,j){const p=A.pos,pnl=(px-p.entry)*p.dir*100*p.lot;A.bal+=pnl;A.trades.push({...p,exit:px,pnl,why,j,tj:D[j].t});A.pos=null;if(A.live&&!quiet)notify('Posisi ditutup ('+why+')',`${p.dir>0?'BUY':'SELL'} ${f2(p.entry)} -> ${f2(px)} | ${pnl>=0?'+':''}$${f2(pnl)}`)}
+
+function openP(A,dir,i){
+  const e=D[i].c, sl=X.atr(14)[i]*CONFIG.SL_ATR, lot=Math.max(.01,Math.floor(A.bal*CONFIG.RISK_PCT/100/(sl*100)*100)/100);
+  A.pos={dir, entry:e, sl:e-dir*sl, tp:e+dir*sl*CONFIG.RR, lot, i, t:D[i].t};
+  const msg=`Entry ${f2(e)} | TP ${f2(A.pos.tp)} | SL ${f2(A.pos.sl)} | ${lot} lot`;
+  if(A.live&&!quiet) notify((dir>0?'BUY':'SELL')+' XAU/USD Dibuka!', msg);
+}
+
+function closeP(A,px,why,j){
+  const p=A.pos, pnl=(px-p.entry)*p.dir*100*p.lot;
+  A.bal+=pnl; A.trades.push({...p,exit:px,pnl,why,j,tj:D[j].t}); A.pos=null;
+  if(A.live&&!quiet) notify('Posisi Ditutup ('+why+')',`${p.dir>0?'BUY':'SELL'} ${f2(p.entry)} -> ${f2(px)} | ${pnl>=0?'+':''}$${f2(pnl)}`);
+}
+
 function manage(A,h,l,j){const p=A.pos;if(!p)return;if(p.dir>0){if(l<=p.sl)closeP(A,p.sl,'SL',j);else if(h>=p.tp)closeP(A,p.tp,'TP',j)}else{if(h>=p.sl)closeP(A,p.sl,'SL',j);else if(l<=p.tp)closeP(A,p.tp,'TP',j)}}
 function onBar(A,i){const g=run(i);if(g.sig!='WAIT'&&g.sig!=A.last){const dir=g.sig=='BUY'?1:-1;if(A.pos&&A.pos.dir!=dir)closeP(A,D[i].c,'Reverse',i);if(!A.pos)openP(A,dir,i)}A.last=g.sig;return g}
 function stats(A){const t=A.trades,w=t.filter(x=>x.pnl>0),gw=w.reduce((a,x)=>a+x.pnl,0),gl=-t.filter(x=>x.pnl<=0).reduce((a,x)=>a+x.pnl,0);let e=A.b0,pk=e,dd=0;t.forEach(x=>{e+=x.pnl;pk=Math.max(pk,e);dd=Math.max(dd,(pk-e)/pk*100)});return{n:t.length,wr:t.length?w.length/t.length*100:0,pf:gl?gw/gl:gw?99:0,dd,net:A.bal-A.b0}}
@@ -109,7 +129,7 @@ async function poll(){lastPoll=Date.now();try{const g=Math.ceil((Date.now()/1e3-
 function startPoll(){clearInterval(pv);lastPoll=Date.now();pv=setInterval(()=>{if(!live||document.hidden||!goldOpen()||used>=CONFIG.MAX_CREDITS)return;const s=SEC[tf],n=Date.now(),nb=s>=300&&Math.floor(n/1e3/s)!=Math.floor(lastPoll/1e3/s);if(nb||n-lastPoll>=(s>=300?3e5:12e4))poll()},30000)}
 function demo(){const sc=SEC[tf],vol=.001*Math.sqrt(sc/900);let p=4150,t=Math.floor(Date.now()/1e3/sc)*sc,sd=7+sc%97;const r=()=>(sd=(sd*16807)%2147483647)/2147483647,g=()=>Math.sqrt(-2*Math.log(r()))*Math.cos(6.283*r());D=[];for(let i=0;i<400;i++){const o=p,c=o*(1+Math.sin(i/(20+sc/600))*vol*.3+g()*vol);D.push({t:t-(399-i)*sc,o,h:Math.max(o,c)*(1+vol/4),l:Math.min(o,c)*(1-vol/4),c});p=c}}
 function setMsg(h){const m=$('#msg');m.style.display=h?'flex':'none';m.innerHTML=h?`<div>${h}</div>`:''}
-function explain(e){const m=e.message||String(e);if(e instanceof TypeError||/fetch|network|load failed/i.test(m))return 'Browser tidak bisa menjangkau api.twelvedata.com. Simpan file ke HP lalu buka lewat Chrome.';return 'Twelve Data menjawab: '+m}
+function explain(e){const m=e.message||String(e);if(e instanceof TypeError||/fetch|network|load failed/i.test(m))return 'Browser tidak bisa menjangkau api.twelvedata.com.';return 'Twelve Data menjawab: '+m}
 const tech=e=>`<small>Detail teknis: ${e.name||'Error'} - ${e.message||e}</small>`
 function startDemo(){live=0;demo();calc();setMsg(null);const st=$('#st');st.className='pill demo';st.textContent='DEMO (bukan harga pasar)';showSig();dirty=1}
 async function connect(){tf=$('#tf').value;live=0;clearInterval(pv);botOn=0;A=mkA(1);lastN=-1;D=[];sg=null;const st=$('#st');st.className='pill';st.textContent='MENGHUBUNGKAN';$('#info').textContent='';
@@ -122,55 +142,55 @@ live=1;st.className='pill live';st.textContent='LIVE XAU/USD';setMsg(null);calc(
 catch(e){D=[];st.className='pill err';st.textContent='BELUM TERHUBUNG';setMsg('<b>Gagal terhubung</b><p>'+explain(e)+'</p><p>'+tech(e)+'</p><div class="row"><button class="go" id="m1">Coba lagi</button><button id="m2">Lihat data demo</button></div>');$('#m1').onclick=connect;$('#m2').onclick=startDemo}
 dirty=1}
 
-/* ---- GAMBAR CHART DENGAN S&D, S&R & FIBONACCI (VERSI AMAN & TUNTAS) ---- */
+/* ---- GAMBAR CHART DENGAN ZOOM, PAN, ZONA S&D, DAN GARIS TP/SL/ENTRY ---- */
 function fit(c){const r=c.getBoundingClientRect(),d=devicePixelRatio||1,W=Math.round(r.width*d),H=Math.round(r.height*d);if(c.width!=W||c.height!=H){c.width=W;c.height=H}const x=c.getContext('2d');x.setTransform(d,0,0,d,0,0);x.clearRect(0,0,r.width,r.height);return{x,w:r.width,h:r.height}}
-let VW=1;
+
 function draw(){
   dirty=0;
   if(!D.length){fit($('#cv'));fit($('#cr'));return}
-  const cs=getComputedStyle(document.documentElement),g=n=>cs.getPropertyValue(n).trim(),UP=g('--up'),DN=g('--dn'),GR=g('--bd'),MU=g('--mu'),TX=g('--tx'),m=fit($('#cv')),x=m.x,N=Math.min(120,D.length),i0=D.length-N,PR=58,W=m.w-PR,bw=W/(N+4),h=m.h;
+  const cs=getComputedStyle(document.documentElement),g=n=>cs.getPropertyValue(n).trim(),UP=g('--up'),DN=g('--dn'),GR=g('--bd'),MU=g('--mu'),TX=g('--tx'),m=fit($('#cv')),x=m.x;
+  
+  // Bates render dengan Zoom & Pan
+  zoomN = Math.max(20, Math.min(D.length, zoomN));
+  const N = Math.round(zoomN);
+  let maxPan = Math.max(0, D.length - N);
+  panOffset = Math.max(0, Math.min(maxPan, panOffset));
+  const i0 = Math.floor(panOffset);
+  const i1 = Math.min(D.length, i0 + N);
+  
+  const PR=58,W=m.w-PR,bw=W/(N+2),h=m.h;
 
-  let lo=1e9,hi=-1e9;for(let i=i0;i<D.length;i++){lo=Math.min(lo,D[i].l);hi=Math.max(hi,D[i].h)}
+  let lo=1e9,hi=-1e9;for(let i=i0;i<i1;i++){lo=Math.min(lo,D[i].l);hi=Math.max(hi,D[i].h)}
   const p=A.pos;if(p){lo=Math.min(lo,p.sl,p.tp);hi=Math.max(hi,p.sl,p.tp)}
-  const pd=(hi-lo)*.07;lo-=pd;hi+=pd;
+  const pd=(hi-lo)*.08;lo-=pd;hi+=pd;
 
   const XX=i=>(i-i0)*bw+bw/2,Y=v=>12+(hi-v)/(hi-lo)*(h-24);x.font='11px system-ui';
 
   // 1. Grid Harga
   for(let k=0;k<=5;k++){const v=lo+(hi-lo)*k/5,y=Math.round(Y(v))+.5;x.strokeStyle=GR;x.beginPath();x.moveTo(0,y);x.lineTo(W,y);x.stroke();x.fillStyle=MU;x.fillText(f2(v),W+6,y+4)}
 
-  // 2. DETEKSI & RENDER ZONA SUPPLY & DEMAND / S&R
+  // 2. ZONA S&D / S&R
   try {
-    for (let i = i0 + 2; i < D.length - 2; i++) {
+    for (let i = 2; i < D.length - 2; i++) {
       let p2 = D[i-2], p1 = D[i-1], c = D[i], n1 = D[i+1], n2 = D[i+2];
-      // Swing High (Supply / Resistance)
       if (c.h > p1.h && c.h > p2.h && c.h > n1.h && c.h > n2.h) {
         let py = Y(c.h);
         if (py >= 0 && py <= h) {
-          x.fillStyle = 'rgba(240, 82, 79, 0.12)';
-          x.strokeStyle = 'rgba(240, 82, 79, 0.4)';
-          x.fillRect(0, py - 6, W, 12);
-          x.strokeRect(0, py - 6, W, 12);
-          x.fillStyle = '#f0524f';
-          x.fillText('Supply/Resistance ' + f2(c.h), 8, py - 8);
+          x.fillStyle = 'rgba(240, 82, 79, 0.1)'; x.strokeStyle = 'rgba(240, 82, 79, 0.3)';
+          x.fillRect(0, py - 5, W, 10); x.strokeRect(0, py - 5, W, 10);
         }
       }
-      // Swing Low (Demand / Support)
       if (c.l < p1.l && c.l < p2.l && c.l < n1.l && c.l < n2.l) {
         let py = Y(c.l);
         if (py >= 0 && py <= h) {
-          x.fillStyle = 'rgba(34, 195, 166, 0.12)';
-          x.strokeStyle = 'rgba(34, 195, 166, 0.4)';
-          x.fillRect(0, py - 6, W, 12);
-          x.strokeRect(0, py - 6, W, 12);
-          x.fillStyle = '#22c3a6';
-          x.fillText('Demand/Support ' + f2(c.l), 8, py + 16);
+          x.fillStyle = 'rgba(34, 195, 166, 0.1)'; x.strokeStyle = 'rgba(34, 195, 166, 0.3)';
+          x.fillRect(0, py - 5, W, 10); x.strokeRect(0, py - 5, W, 10);
         }
       }
     }
   } catch(e) {}
 
-  // 3. RENDER FIBONACCI RETRACEMENT
+  // 3. FIBONACCI RETRACEMENT
   try {
     let rangeHigh = hi - pd, rangeLow = lo + pd, diff = rangeHigh - rangeLow;
     if (diff > 0) {
@@ -180,7 +200,7 @@ function draw(){
         let fPx = rangeHigh - (diff * lvl);
         let py = Y(fPx);
         if (py >= 0 && py <= h) {
-          x.strokeStyle = (lvl === 0.618) ? '#e5b53b' : 'rgba(255, 255, 255, 0.25)';
+          x.strokeStyle = (lvl === 0.618) ? '#e5b53b' : 'rgba(255, 255, 255, 0.2)';
           x.beginPath(); x.moveTo(0, py); x.lineTo(W, py); x.stroke();
           x.fillStyle = (lvl === 0.618) ? '#e5b53b' : MU;
           x.fillText(`Fib ${lvl} (${f2(fPx)})`, W - 105, py - 3);
@@ -191,29 +211,31 @@ function draw(){
   } catch(e) {}
 
   // 4. Gambar Candle
-  for(let i=i0;i<D.length;i++){const d=D[i],c=d.c>=d.o?UP:DN,xx=Math.round(XX(i))+.5;x.strokeStyle=x.fillStyle=c;x.beginPath();x.moveTo(xx,Y(d.h));x.lineTo(xx,Y(d.l));x.stroke();x.fillRect(xx-bw*.35,Y(Math.max(d.o,d.c)),bw*.7,Math.max(1,Math.abs(Y(d.o)-Y(d.c))))}
+  for(let i=i0;i<i1;i++){const d=D[i],c=d.c>=d.o?UP:DN,xx=Math.round(XX(i))+.5;x.strokeStyle=x.fillStyle=c;x.beginPath();x.moveTo(xx,Y(d.h));x.lineTo(xx,Y(d.l));x.stroke();x.fillRect(xx-bw*.35,Y(Math.max(d.o,d.c)),bw*.7,Math.max(1,Math.abs(Y(d.o)-Y(d.c))))}
 
   // 5. Garis Indikator MA
-  CONFIG.LINES.forEach(([t,pp,c])=>{const a=X[t](pp);x.strokeStyle=c;x.lineWidth=1.6;x.beginPath();let on=0;for(let i=i0;i<D.length;i++){if(isNaN(a[i]))continue;on?x.lineTo(XX(i),Y(a[i])):x.moveTo(XX(i),Y(a[i]));on=1}x.stroke();x.lineWidth=1});
+  CONFIG.LINES.forEach(([t,pp,c])=>{const a=X[t](pp);x.strokeStyle=c;x.lineWidth=1.6;x.beginPath();let on=0;for(let i=i0;i<i1;i++){if(isNaN(a[i]))continue;on?x.lineTo(XX(i),Y(a[i])):x.moveTo(XX(i),Y(a[i]));on=1}x.stroke();x.lineWidth=1});
 
-  // 6. Posisi Trade & Garis SL / TP / ENTRY
-  const mk=(i,dir,c)=>{if(i<i0)return;const xx=XX(i),y=dir>0?Y(D[i].l)+13:Y(D[i].h)-13;x.fillStyle=c;x.beginPath();x.moveTo(xx,dir>0?y-9:y+9);x.lineTo(xx-6,dir>0?y+3:y-3);x.lineTo(xx+6,dir>0?y+3:y-3);x.fill()};
+  // 6. POSISI TRADE (ENTRY, TP, SL) JELAS DI CHART
+  const mk=(i,dir,c)=>{if(i<i0||i>=i1)return;const xx=XX(i),y=dir>0?Y(D[i].l)+13:Y(D[i].h)-13;x.fillStyle=c;x.beginPath();x.moveTo(xx,dir>0?y-9:y+9);x.lineTo(xx-6,dir>0?y+3:y-3);x.lineTo(xx+6,dir>0?y+3:y-3);x.fill()};
   A.trades.forEach(t=>mk(t.i,t.dir,t.dir>0?UP:DN));
   if(p){
     mk(p.i,p.dir,p.dir>0?UP:DN);
     [['ENTRY',p.entry,'#4aa3ff'],['TP',p.tp,UP],['SL',p.sl,DN]].forEach(([l,v,c])=>{
-      x.strokeStyle=x.fillStyle=c;x.setLineDash([5,4]);x.beginPath();x.moveTo(0,Y(v));x.lineTo(W,Y(v));x.stroke();x.setLineDash([]);x.fillText(l+' '+f2(v),6,Y(v)-3);
+      x.strokeStyle=x.fillStyle=c;x.setLineDash([6,4]);x.lineWidth=1.5;x.beginPath();x.moveTo(0,Y(v));x.lineTo(W,Y(v));x.stroke();x.setLineDash([]);x.lineWidth=1;
+      x.fillStyle=c;x.fillRect(0,Y(v)-9,52,18);x.fillStyle='#111';x.fillText(l,4,Y(v)+4);
+      x.fillStyle=c;x.fillText(f2(v),56,Y(v)+4);
     });
   }
 
-  // Label Harga Terakhir
+  // Harga Terakhir
   const L=D[D.length-1];x.fillStyle=L.c>=L.o?UP:DN;x.fillRect(W,Y(L.c)-9,PR,18);x.fillStyle='#fff';x.fillText(f2(L.c),W+5,Y(L.c)+4);
-  const hv=mouse&&mouse.x<W?Math.min(D.length-1,Math.max(i0,Math.round((mouse.x-bw/2)/bw)+i0)):D.length-1,o=D[hv];x.fillStyle=TX;x.fillText(`${CONFIG.SYMBOL} · ${tf}   O ${f2(o.o)}  H ${f2(o.h)}  L ${f2(o.l)}  C ${f2(o.c)}`,8,13);
+  const hv=mouse&&mouse.x<W?Math.min(i1-1,Math.max(i0,Math.round((mouse.x-bw/2)/bw)+i0)):D.length-1,o=D[hv];x.fillStyle=TX;x.fillText(`${CONFIG.SYMBOL} · ${tf}   O ${f2(o.o)}  H ${f2(o.h)}  L ${f2(o.l)}  C ${f2(o.c)}`,8,13);
   if(mouse&&mouse.x<W){x.strokeStyle=MU;x.setLineDash([3,3]);x.beginPath();x.moveTo(XX(hv),0);x.lineTo(XX(hv),h);x.stroke();x.setLineDash([])}
 
   // Sub-chart RSI
   const q=fit($('#cr')),qx=q.x,rs=X.rsi(14),RY=v=>6+(100-v)/100*(q.h-12);qx.font='11px system-ui';[30,70].forEach(v=>{qx.strokeStyle=GR;qx.beginPath();qx.moveTo(0,RY(v));qx.lineTo(W,RY(v));qx.stroke();qx.fillStyle=MU;qx.fillText(v,W+6,RY(v)+4)});
-  qx.strokeStyle='#b388ff';qx.lineWidth=1.5;qx.beginPath();for(let i=i0;i<D.length;i++)i==i0?qx.moveTo(XX(i),RY(rs[i])):qx.lineTo(XX(i),RY(rs[i]));qx.stroke();qx.lineWidth=1;qx.fillStyle='#b388ff';qx.fillText('RSI 14 · '+rs[hv].toFixed(1),8,13);ui();
+  qx.strokeStyle='#b388ff';qx.lineWidth=1.5;qx.beginPath();for(let i=i0;i<i1;i++)i==i0?qx.moveTo(XX(i),RY(rs[i])):qx.lineTo(XX(i),RY(rs[i]));qx.stroke();qx.lineWidth=1;qx.fillStyle='#b388ff';qx.fillText('RSI 14 · '+rs[hv].toFixed(1),8,13);ui();
 }
 
 function ui(){const L=D[D.length-1],s=stats(A),E=eq(A),p=A.pos,cl=v=>v>=0?'up':'dn',ch=L.c-D[Math.max(0,D.length-97)].c;$('#px').textContent=f2(L.c);$('#chg').innerHTML=`<span class="${cl(ch)}">${ch>=0?'+':'-'}${f2(Math.abs(ch))}</span>`;
@@ -222,12 +244,60 @@ $('#pos').innerHTML=p?`<b class="${p.dir>0?'up':'dn'}">${p.dir>0?'BUY':'SELL'} $
 $('#kv').innerHTML=[['Balance','$'+f2(A.bal)],['Equity','$'+f2(E)],['Net P/L',(s.net>=0?'+':'')+'$'+f2(s.net),cl(s.net)],['Trade',s.n],['Win rate',s.wr.toFixed(0)+'%'],['Profit factor',s.pf.toFixed(2)]].map(([a,b,c])=>`<div><small>${a}</small><b class="${c||''}">${b}</b></div>`).join('');
 $('#info').textContent=!live?'':`Kredit API terpakai hari ini ~${used}/800 · update harga tiap candle & ±5 menit. Paper trading, bukan saran keuangan.`;
 if(lastN!=A.trades.length){lastN=A.trades.length;$('#log').innerHTML='<tr><th>#</th><th>Arah</th><th>Entry</th><th>Exit</th><th>Lot</th><th>P/L</th><th>Ket</th></tr>'+(A.trades.slice(-20).reverse().map((t,k)=>`<tr><td>${A.trades.length-k}</td><td class="${t.dir>0?'up':'dn'}">${t.dir>0?'BUY':'SELL'}</td><td>${f2(t.entry)}</td><td>${f2(t.exit)}</td><td>${t.lot}</td><td class="${t.pnl>=0?'up':'dn'}">${t.pnl>=0?'+':''}${f2(t.pnl)}</td><td>${t.why}</td></tr>`).join('')||'<tr><td colspan=7 style="text-align:center;color:var(--mu)">Belum ada trade</td></tr>')}}
+
 $('#bot').onclick=()=>{if(!live){alert('Hubungkan ke data live dulu.');return}botOn=!botOn;if(botOn){A.last=sg?sg.sig:'WAIT';A.lastT=D[D.length-2].t}save();dirty=1};$('#rs').onclick=()=>{A=mkA(1);botOn=0;lastN=-1;$('#btr').innerHTML='';save();dirty=1};
-$('#sk').onclick=()=>{const v=$('#key').value.trim();if(v){try{localStorage.setItem('td_key',v)}catch(e){}connect()}};$('#nt').textContent=('Notification' in window&&Notification.permission=='granted')?'Notifikasi aktif':'Aktifkan notifikasi';
-$('#nt').onclick=async()=>{if(!('Notification' in window)){alert('Browser ini tidak mendukung notifikasi.');return}const p=await Notification.requestPermission();$('#nt').textContent=p=='granted'?'Notifikasi aktif':'Notifikasi ditolak';if(p=='granted')notify('Gold Robot','Notifikasi aktif')};
+$('#sk').onclick=()=>{const v=$('#key').value.trim();if(v){try{localStorage.setItem('td_key',v)}catch(e){}connect()}};
+$('#nt').textContent=('Notification' in window&&Notification.permission=='granted')?'Notifikasi aktif':'Aktifkan notifikasi';
+$('#nt').onclick=async()=>{if(!('Notification' in window)){alert('Browser tidak mendukung notifikasi.');return}const p=await Notification.requestPermission();$('#nt').textContent=p=='granted'?'Notifikasi aktif':'Notifikasi ditolak';if(p=='granted')notify('Gold Robot','Notifikasi diaktifkan!')};
+
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&live&&goldOpen()&&used<CONFIG.MAX_CREDITS)poll()});
 $('#btn').onclick=backtest;$('#rc').onclick=connect;$('#tf').onchange=connect;
-$('#cv').addEventListener('pointermove',e=>{const r=e.target.getBoundingClientRect();mouse={x:e.clientX-r.left,y:e.clientY-r.top};dirty=1});$('#cv').addEventListener('pointerleave',()=>{mouse=null;dirty=1});
-addEventListener('resize',()=>dirty=1);(function loop(){if(dirty)draw();requestAnimationFrame(loop)})();connect();
+
+/* ---- INTERAKSI TOUCH / MOUSE (ZOOM & PAN DI HP) ---- */
+let isDragging=false, startX=0, startDist=0;
+const cvEl = $('#cv');
+
+cvEl.addEventListener('pointerdown', e => { isDragging=true; startX=e.clientX; cvEl.setPointerCapture(e.pointerId); });
+cvEl.addEventListener('pointermove', e => {
+  const r = e.target.getBoundingClientRect();
+  mouse = { x: e.clientX - r.left, y: e.clientY - r.top };
+  if(isDragging) {
+    const dx = e.clientX - startX;
+    startX = e.clientX;
+    panOffset -= dx / (r.width / zoomN);
+    dirty = 1;
+  }
+  dirty = 1;
+});
+cvEl.addEventListener('pointerup', e => { isDragging=false; try{cvEl.releasePointerCapture(e.pointerId);}catch(err){} });
+cvEl.addEventListener('pointerleave', () => { mouse = null; isDragging=false; dirty = 1; });
+
+// Support Pinch Zoom di HP & Scroll Mouse di Desktop
+cvEl.addEventListener('wheel', e => {
+  e.preventDefault();
+  zoomN += e.deltaY > 0 ? 8 : -8;
+  zoomN = Math.max(20, Math.min(D.length, zoomN));
+  dirty = 1;
+}, { passive: false });
+
+cvEl.addEventListener('touchstart', e => {
+  if(e.touches.length === 2) {
+    startDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+  }
+});
+cvEl.addEventListener('touchmove', e => {
+  if(e.touches.length === 2 && startDist > 0) {
+    const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+    const diff = dist - startDist;
+    startDist = dist;
+    zoomN -= diff > 0 ? 5 : -5;
+    zoomN = Math.max(20, Math.min(D.length, zoomN));
+    dirty = 1;
+  }
+});
+
+addEventListener('resize',()=>dirty=1);
+(function loop(){if(dirty)draw();requestAnimationFrame(loop)})();
+connect();
 </script></body></html>
