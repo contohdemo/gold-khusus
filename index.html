@@ -128,14 +128,14 @@ function startDemo(){live=0;demo();calc();setMsg(null);const st=$('#st');st.clas
 async function connect(){tf=$('#tf').value;live=0;clearInterval(pv);botOn=0;A=mkA(1);lastN=-1;D=[];sg=null;const st=$('#st');st.className='pill';st.textContent='MENGHUBUNGKAN';$('#info').textContent='';
 setMsg('<b>Mengambil data XAU/USD '+tf+' dari Twelve Data...</b>');$('#sg').textContent='-';$('#sg').style.color='';$('#why').innerHTML='';$('#cf').style.width='0';$('#cft').textContent='';$('#pos').innerHTML='';dirty=1;
 try{let er,ok=0;const ks=[];try{ks.push(localStorage.getItem('td_key'))}catch(e){}ks.push(...CONFIG.API_KEYS);
-if(!ks.filter(Boolean).length){st.className='pill err';st.textContent='BUTUH API KEY';setMsg('<b>Masukkan API key Twelve Data</b><p>Cukup sekali. Key disimpan di HP ini saja, tidak ikut ke GitHub.</p><div class="row" style="justify-content:center"><input id="mk" placeholder="API key" style="background:var(--pn2);color:var(--tx);border:1px solid var(--bd);border-radius:9px;padding:8px;min-width:0"><button class="go" id="mb">Simpan &amp; hubungkan</button></div>');$('#mb').onclick=()=>{const v=$('#mk').value.trim();if(v){try{localStorage.setItem('td_key',v)}catch(e){}connect()}};dirty=1;return}
+if(!ks.filter(Boolean).length){st.className='pill err';st.textContent='BUTUH API KEY';setMsg('<b>Masukkan API key Twelve Data</b><p>Cukup sekali. Key disimpan di HP ini saja, tidak ikut ke GitHub.</p><div class="row" style="justify-content:center"><input id="mk" placeholder="API key" style="background:var(--pn2);color:var(--tx);border:1px solid var(--bd);border-radius:9px;padding:8px;min-width:0"><button class="go" id="mb">Simpan &amp; hubungkan</button></div>');$('#mb').onclick=()=>{const v=$('#mk'].value.trim();if(v){try{localStorage.setItem('td_key',v)}catch(e){}connect()}};dirty=1;return}
 for(const k of ks.filter(Boolean)){KEY=k;try{D=await fetchBars(1000);ok=1;break}catch(e){er=e;if(e instanceof TypeError)break}}
 if(!ok)throw er||Error('tidak ada API key');if(D.length<60)throw Error('data terlalu sedikit ('+D.length+' candle)');
 live=1;st.className='pill live';st.textContent='LIVE XAU/USD';setMsg(null);calc();restore();showSig();save();startPoll()}
 catch(e){D=[];st.className='pill err';st.textContent='BELUM TERHUBUNG';setMsg('<b>Gagal terhubung</b><p>'+explain(e)+'</p><p>'+tech(e)+'</p><div class="row"><button class="go" id="m1">Coba lagi</button><button id="m2">Lihat data demo</button></div>');$('#m1').onclick=connect;$('#m2').onclick=startDemo}
 dirty=1}
 
-/* ---- GAMBAR CHART AMAN & STABIL ---- */
+/* ---- GAMBAR CHART YANG SUDAH TERUJI MUNCUL + GARIS ENTRY/SL/TP ---- */
 function fit(c){const r=c.getBoundingClientRect(),d=devicePixelRatio||1,W=Math.round(r.width*d),H=Math.round(r.height*d);if(c.width!=W||c.height!=H){c.width=W;c.height=H}const x=c.getContext('2d');x.setTransform(d,0,0,d,0,0);x.clearRect(0,0,r.width,r.height);return{x,w:r.width,h:r.height}}
 
 function draw(){
@@ -199,7 +199,7 @@ function draw(){
   // Garis MA
   CONFIG.LINES.forEach(([t,pp,c])=>{const a=X[t](pp);x.strokeStyle=c;x.lineWidth=1.6;x.beginPath();let on=0;for(let i=i0;i<D.length;i++){if(isNaN(a[i]))continue;on?x.lineTo(XX(i),Y(a[i])):x.moveTo(XX(i),Y(a[i]));on=1}x.stroke();x.lineWidth=1});
 
-  // POSISI TRADE (ENTRY, TP, SL)
+  // GARIS POSISI TRADE (ENTRY, TP, SL) JELAS DI CHART
   const mk=(i,dir,c)=>{if(i<i0)return;const xx=XX(i),y=dir>0?Y(D[i].l)+13:Y(D[i].h)-13;x.fillStyle=c;x.beginPath();x.moveTo(xx,dir>0?y-9:y+9);x.lineTo(xx-6,dir>0?y+3:y-3);x.lineTo(xx+6,dir>0?y+3:y-3);x.fill()};
   A.trades.forEach(t=>mk(t.i,t.dir,t.dir>0?UP:DN));
   if(p){
