@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="id"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Gold Robot XAU/USD - SnD Scalping</title>
+<title>Gold Robot XAU/USD</title>
 <meta name="theme-color" content="#0b0e13"><link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icon-192.png"><link rel="apple-touch-icon" href="icon-192.png"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes">
 <style>
 :root{--bg:#0b0e13;--pn:#141922;--pn2:#0f131a;--bd:#232b38;--tx:#e8edf4;--mu:#8793a5;--up:#22c3a6;--dn:#f0524f;--ac:#e5b53b;--bl:#4aa3ff}
@@ -20,8 +20,8 @@ button{font-weight:600;letter-spacing:.2px}button.go{background:var(--ac);color:
 @media(max-width:860px){.grid{grid-template-columns:1fr;grid-template-areas:"sig" "chart" "pend" "stats" "bt" "log"}}
 .card{background:var(--pn);border:1px solid var(--bd);border-radius:14px;padding:14px;min-width:0}
 .card h3{margin:0 0 8px;font-size:12px;color:var(--mu);letter-spacing:.8px;text-transform:uppercase}
-.chart{grid-area:chart;padding:0;overflow:hidden;display:flex;flex-direction:column;min-height:560px}
-.cv{position:relative;flex:3;min-height:300px}.cv.s{flex:2;min-height:170px;border-top:1px solid var(--bd)}
+.chart{grid-area:chart;padding:0;overflow:hidden;display:flex;flex-direction:column;min-height:480px}
+.cv{position:relative;flex:4;min-height:300px}.cv.s{flex:1;min-height:90px;border-top:1px solid var(--bd)}
 .cv canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:pan-y}
 .pend{grid-area:pend}.sig{grid-area:sig}.stats{grid-area:stats}.bt{grid-area:bt}.log{grid-area:log;overflow-x:auto}
 #sg{font-size:34px;font-weight:900;line-height:1}.bar{height:7px;background:var(--bd);border-radius:9px;margin:10px 0 4px;overflow:hidden}.bar i{display:block;height:100%;transition:width .4s}
@@ -33,196 +33,186 @@ table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:6px 4px;b
 #toast{position:fixed;top:calc(10px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);max-width:92vw;background:var(--pn);border:1px solid var(--ac);border-radius:12px;padding:10px 14px;z-index:9;display:none;box-shadow:0 6px 24px #0008}
 .zb{position:absolute;top:6px;right:64px;display:flex;gap:4px;z-index:1}.zb button{padding:4px 9px;font-size:12px;opacity:.9}
 </style></head><body>
-<div class="top"><div class="logo">GOLD<b>ROBOT</b> <small>XAU/USD</small></div><div id="px">—</div><small id="chg"></small><span class="pill" id="st">MENGHUBUNGKAN…</span><span class="pill">Zona M15 · Entri M1</span><span class="sp"></span>
+<div class="top"><div class="logo">GOLD<b>ROBOT</b> <small>XAU/USD</small></div><div id="px">—</div><small id="chg"></small><span class="pill" id="st">MENGHUBUNGKAN…</span><span class="sp"></span>
+<select id="tf"><option value="1min">1m</option><option value="5min">5m</option><option value="15min">15m</option><option value="1h" selected>1H</option><option value="4h">4H</option></select>
 <button id="rc" title="Muat ulang data">Muat ulang</button><button id="bot" class="go">START BOT</button></div>
 <div class="grid">
-<div class="card sig"><h3>Sinyal Robot (SnD Scalping)</h3><div id="sg">—</div><div class="bar"><i id="cf"></i></div><small id="cft"></small><ul id="why"></ul><div class="pos" id="pos"></div></div>
+<div class="card sig"><h3>Sinyal Robot</h3><div id="sg">—</div><div class="bar"><i id="cf"></i></div><small id="cft"></small><ul id="why"></ul><div class="pos" id="pos"></div></div>
 <div class="card chart"><div class="cv"><canvas id="cv"></canvas><div id="msg"></div><div class="zb"><button id="zi">+</button><button id="zo">-</button><button id="zr">Reset</button><button id="zz">Zona: ON</button></div></div><div class="cv s"><canvas id="cr"></canvas></div></div>
 <div class="card stats"><h3>Akun Paper Trading</h3><div class="kv" id="kv"></div></div>
-<div class="card pend"><h3>Order Pending (CHoCH M1)</h3><div id="pd"></div><div class="row" style="margin-top:8px"><button id="cp">Batalkan semua</button></div></div>
+<div class="card pend"><h3>Order Pending (Smart)</h3><div id="pd"></div><div class="row" style="margin-top:8px"><button id="sp">Smart pending: ON</button><button id="cp">Batalkan semua</button></div></div>
 <div class="card bt"><h3>Backtest &amp; Akun</h3><div class="row"><button id="btn">Backtest</button><button id="rs">Reset akun</button><button id="nt">Aktifkan notifikasi</button></div><div class="row" style="margin-top:10px"><input id="key" placeholder="API key TwelveData (opsional)" style="flex:1;min-width:0;background:var(--pn2);color:var(--tx);border:1px solid var(--bd);border-radius:9px;padding:8px"><button id="sk">Simpan &amp; hubungkan</button></div><div id="btr" style="margin-top:10px"></div><small id="info"></small></div>
 <div class="card log"><h3>Riwayat Trade</h3><table id="log"></table></div>
 </div>
 <div id="toast"></div>
 <script>
-/* ============ 1. PENGATURAN ============ */
+/* ============ 1. PENGATURAN (edit angka di sini) ============ */
 const CONFIG={
-  API_KEYS:[],          // jangan isi key di sini jika repo publik; isi lewat aplikasi
+  API_KEYS:[], // JANGAN isi key di sini jika repo publik. Isi lewat aplikasi (disimpan di HP).
   SYMBOL:'XAU/USD',
-  BALANCE:10000,        // modal awal akun virtual ($)
-  RISK_PCT:1,           // risiko per trade (% balance)
-  RR:3,                 // take profit = RR x jarak SL (video: RR 1:3)
-  SPREAD:0.29,          // spread XAU/USD akun Standard (video), dipotong dari tiap trade
-  ZONE_ENTRIES:2,       // rules video: 1 zona High TF maksimal 2x entri
-  MAX_PENDING:1,        // hanya 1 order pending; tidak ada order baru saat posisi terbuka
-  PEND_BARS:45,         // pending kedaluwarsa (candle M1)
-  MIN_H:120,            // minimal candle M15 sebelum bot mulai (pemanasan EMA200)
-  EMA_FAST:50,EMA_SLOW:200,
-  MAX_CREDITS:780
+  BALANCE:10000,   // modal awal akun virtual ($)
+  RISK_PCT:1,      // risiko per trade (% dari balance)
+  RR:2,            // take profit = RR x jarak stop loss
+  SL_ATR:1.5,      // stop loss = SL_ATR x ATR(14)
+  MAX_CREDITS:780, // batas request per hari (gratis = 800)
+  SMART_PENDING:true,  // order pending otomatis di zona SnD/SnR
+  MAX_PENDING:2,       // maksimal order pending aktif
+  PEND_BARS:24,        // kedaluwarsa (jumlah candle)
+  RR_MIN:1.5,          // RR minimum agar order dibuat
+  COUNTER_TREND:false, // true = boleh pending melawan arah MA
+  MA_TYPE:'sma',   // 'sma' atau 'ema'
+  FAST:4,          // periode MA cepat
+  SLOW:20          // periode MA lambat
 };
-CONFIG.LINES=[['ema',50,'#f5c542'],['ema',200,'#ffffff']]; // EMA 50 kuning, EMA 200 putih (seperti video)
-/* ============ 2. STRATEGI (dari video) ============
- HTF = M15: tren EMA50 vs EMA200 + zona Supply/Demand Order Block.
- Downtrend -> hanya Supply OB & SELL. Uptrend -> hanya Demand OB & BUY.
- LTF = M1: harga masuk zona M15 -> tunggu CHoCH (close menembus minor structure)
- -> pasang SELL/BUY LIMIT di OB kecil (OB Low TF), SL di luar OB/puncak, TP RR 1:3.
- Rules: 1 zona M15 maksimal 2x entri. Ada posisi/pending aktif = tidak buka posisi baru. */
-function strategy(i,X,A){
-  const hi=HI[i];
-  if(!(hi>=CONFIG.MIN_H))return {sig:'WAIT',why:`Menunggu data M15 cukup (${Math.max(hi,0)}/${CONFIG.MIN_H} candle)`,stage:0,dir:0};
-  const dir=HX.e50[hi]<HX.e200[hi]?-1:1,
-   tr=dir<0?'M15 Downtrend (EMA50 di bawah EMA200): fokus Supply OB, hanya SELL':'M15 Uptrend (EMA50 di atas EMA200): fokus Demand OB, hanya BUY',
-   R=(sig,why,stage,order)=>({sig,why,stage,order,tr,dir}),
-   at=X.atr(14)[i],px=D[i].c,all=zonesH(hi).filter(z=>z.type==(dir<0?'S':'D')),
-   free=all.filter(z=>(A.uses[z.k]||0)<CONFIG.ZONE_ENTRIES),nm=dir<0?'Supply':'Demand';
-  if(!all.length)return R('WAIT','Belum ada zone '+nm+' M15 yang valid',0);
-  if(!free.length)return R('WAIT',`Semua zona ${nm} M15 sudah dipakai ${CONFIG.ZONE_ENTRIES}x entri`,0);
-  let best=null;
-  for(const z of free){
-    let pk=-1;
-    for(let k=Math.max(5,i-45);k<=i;k++){if(D[k].t<z.ct)continue;if(dir<0?D[k].h>=z.bot:D[k].l<=z.top){if(pk<0||(dir<0?D[k].h>D[pk].h:D[k].l<D[pk].l))pk=k}}
-    if(pk<0||i-pk>40)continue;
-    let dead=0;for(let k=pk;k<=i;k++)if(dir<0?D[k].c>z.top:D[k].c<z.bot){dead=1;break}
-    if(dead)continue;
-    let lvl=null,lk=0;
-    for(let k=pk-3;k>=Math.max(2,pk-40);k--){const d=D[k],f=dir<0?(d.l<D[k-1].l&&d.l<D[k-2].l&&d.l<D[k+1].l&&d.l<D[k+2].l):(d.h>D[k-1].h&&d.h>D[k-2].h&&d.h>D[k+1].h&&d.h>D[k+2].h);if(f){lvl=dir<0?d.l:d.h;lk=k;break}}
-    const zt=`${nm} M15 ${f2(z.bot)}-${f2(z.top)}`;
-    if(lvl==null){best=R('WAIT','Harga di zona '+zt+', minor structure belum terbentuk',2);continue}
-    const brk=k=>dir<0?D[k].c<lvl:D[k].c>lvl;
-    let stale=0;for(let m=pk+1;m<i;m++)if(brk(m)){stale=1;break}
-    if(!brk(i)||stale){if(!stale)best=R('WAIT',`Harga di zona ${zt}. Menunggu CHoCH M1: close ${dir<0?'di bawah':'di atas'} ${f2(lvl)}`,2);continue}
-    let b=pk;for(let q=pk;q>=pk-3;q--)if(dir<0?D[q].c>D[q].o:D[q].c<D[q].o){b=q;break}
-    const top=dir<0?D[b].h:Math.max(D[b].o,D[b].c),bot=dir<0?Math.min(D[b].o,D[b].c):D[b].l,entry=dir<0?bot:top,
-     sl=dir<0?Math.max(D[pk].h,D[b].h)+.15*at:Math.min(D[pk].l,D[b].l)-.15*at,risk=Math.abs(sl-entry);
-    if(!(risk>.25*at&&risk<8*at)||(dir<0?entry<=px:entry>=px))continue;
-    const type=dir<0?'SELL LIMIT':'BUY LIMIT',now=D[i].t;
-    return R(dir<0?'SELL':'BUY',`CHoCH M1 di zona ${zt}. ${type} di OB M1 ${f2(entry)}, SL ${f2(sl)}, TP RR 1:${CONFIG.RR}`,3,
-     {type,dir,entry,sl,tp:entry-dir*-1*risk*CONFIG.RR*-1,src:nm+' OB M15 + CHoCH M1',t:now,exp:now+CONFIG.PEND_BARS*60,zk:z.k,key:type+':'+Math.round(entry),ob:{t:D[b].t,top,bot},lvl,lt:D[lk].t})}
-  return best||R('WAIT',`Menunggu harga masuk zona ${nm} M15 (${f2(free[0].bot)}-${f2(free[0].top)})`,1)}
-/* ============ 3. MESIN ============ */
-const $=q=>document.querySelector(q),f2=v=>v.toFixed(2),SEC={'1min':60},tf='1min',SECH=900;
-let KEY='',D=[],H=[],HI=[],HX={},ZC={},X,A,botOn=0,live=0,dirty=1,sg=null,pv,lastPoll=0,used=0,mouse=null,lastN=-1,ex,Z=[];
+CONFIG.LINES=[[CONFIG.MA_TYPE,CONFIG.FAST,'#f5c542'],[CONFIG.MA_TYPE,CONFIG.SLOW,'#4aa3ff']]; // garis di chart
+/* ============ 2. STRATEGI (edit logika di sini) ============
+ i = nomor candle yang baru tutup. X berisi indikator:
+ X.close/open/high/low[i] · X.ema(p)[i] · X.sma(p)[i] · X.rsi(p)[i]
+ X.macd().line/signal/hist[i] · X.atr(p)[i] · X.bb(p,k).up/mid/low[i]
+ Kembalikan buy('alasan') / sell('alasan') / wait('alasan'). */
+function strategy(i,X){
+  // Strategi: persilangan MA cepat (FAST) dengan MA lambat (SLOW) di timeframe H1
+  const t=CONFIG.MA_TYPE,F=CONFIG.FAST,S=CONFIG.SLOW,f=X[t](F),s=X[t](S),nm=t.toUpperCase();
+  const up=j=>f[j-1]<=s[j-1]&&f[j]>s[j], dn=j=>f[j-1]>=s[j-1]&&f[j]<s[j];
+  if(up(i)) return buy(`${nm}${F} memotong ke atas ${nm}${S} (golden cross)`);
+  if(dn(i)) return sell(`${nm}${F} memotong ke bawah ${nm}${S} (death cross)`);
+  let j=i-1;while(j>S&&!up(j)&&!dn(j))j--;
+  const last=j>S?(up(j)?'BUY':'SELL')+', '+(i-j)+' candle lalu':'belum ada';
+  return wait(`Tidak ada persilangan. ${nm}${F} ${f[i]>s[i]?'di atas':'di bawah'} ${nm}${S}. Persilangan terakhir: ${last}`);
+}
+const buy=(w,c=2)=>({sig:'BUY',why:w,conf:c}),sell=(w,c=2)=>({sig:'SELL',why:w,conf:c}),wait=w=>({sig:'WAIT',why:w,conf:0});
+/* ============ 3. MESIN (tidak perlu diubah) ============ */
+const $=q=>document.querySelector(q),f2=v=>v.toFixed(2),SEC={'1min':60,'5min':300,'15min':900,'1h':3600,'4h':14400};
+let KEY='',D=[],X,A,botOn=0,live=0,dirty=1,tf='1h',sg=null,pv,lastPoll=0,used=0,mouse=null,lastN=-1,ex;
 const dk='td_used_'+new Date().toISOString().slice(0,10);try{used=+localStorage.getItem(dk)||0}catch(e){}
 const addUsed=()=>{used++;try{localStorage.setItem(dk,used)}catch(e){}};
-const mkA=l=>({live:l,bal:CONFIG.BALANCE,b0:CONFIG.BALANCE,pos:null,trades:[],pend:[],uses:{},last:'WAIT'});A=mkA(1);
+const mkA=l=>({live:l,bal:CONFIG.BALANCE,b0:CONFIG.BALANCE,pos:null,trades:[],pend:[],last:'WAIT'});A=mkA(1);
 const EMA=(a,p)=>{const k=2/(p+1);let e=a[0];return a.map((v,i)=>e=i?v*k+e*(1-k):v)};
-const ATR=(S,p)=>{let a=0;return S.map((d,i)=>{const t=i?Math.max(d.h-d.l,Math.abs(d.h-S[i-1].c),Math.abs(d.l-S[i-1].c)):d.h-d.l;return a=i<p?(a*i+t)/(i+1):(a*(p-1)+t)/p})};
-function agg(){H=[];HI=new Array(D.length);const ix={};D.forEach((d,i)=>{const b=Math.floor(d.t/SECH)*SECH;let k=ix[b];if(k==null){k=ix[b]=H.length;H.push({t:b,o:d.o,h:d.h,l:d.l,c:d.c})}else{const g=H[k];g.h=Math.max(g.h,d.h);g.l=Math.min(g.l,d.l);g.c=d.c}HI[i]=d.t+60>=b+SECH?k:k-1});
-const c=H.map(h=>h.c);HX={e50:EMA(c,CONFIG.EMA_FAST),e200:EMA(c,CONFIG.EMA_SLOW),a:ATR(H,14)};ZC={}}
-function calc(){const c=D.map(d=>d.c),m={},M=(k,f)=>m[k]||(m[k]=f());agg();X={ema:p=>M('e'+p,()=>EMA(c,p)),atr:(p=14)=>M('a'+p,()=>ATR(D,p))}}
-/* Zona Supply/Demand Order Block di M15: candle lawan terakhir sebelum impuls yang menembus struktur (BOS) */
-function zonesOf(S,a,n){const out=[];if(n<40)return out;
-for(let k=Math.max(30,n-600);k<=n;k++){const d=S[k],body=Math.abs(d.c-d.o),rg=d.h-d.l;if(body<1.2*a[k-1]||body<.6*rg)continue;const up=d.c>d.o,w=S.slice(Math.max(0,k-8),k);
-if(up?d.c<=Math.max(...w.map(q=>q.h)):d.c>=Math.min(...w.map(q=>q.l)))continue;
-let b=k-1;while(b>k-4&&b>0&&((S[b].c>S[b].o)==up))b--;const B=S[b];if((B.c>B.o)==up)continue;
-const z=up?{type:'D',top:Math.max(B.o,B.c),bot:B.l}:{type:'S',top:B.h,bot:Math.min(B.o,B.c)};z.t=B.t;z.ct=d.t+SECH;z.k=z.type+B.t;
-let dead=0;for(let m=k+1;m<=n;m++){if(up?S[m].c<z.bot:S[m].c>z.top){dead=1;break}}if(!dead)out.push(z)}
-return['D','S'].flatMap(t=>out.filter(z=>z.type==t).sort((p,q)=>q.t-p.t).slice(0,3))}
-const zonesH=hi=>ZC[hi]||(ZC[hi]=zonesOf(H,HX.a,hi));
-function run(i,AA){try{ex=null;return strategy(i,X,AA||A)}catch(e){ex=e.message;return {sig:'WAIT',why:'Error strategi: '+e.message,stage:0,dir:0}}}
+const SMA=(a,p)=>a.map((_,i)=>{if(i<p-1)return NaN;let s=0;for(let j=i-p+1;j<=i;j++)s+=a[j];return s/p});
+function RSI(c,p){const r=c.map(()=>50);let g=0,l=0;for(let i=1;i<c.length;i++){const d=c[i]-c[i-1];if(i<=p){g+=Math.max(d,0);l+=Math.max(-d,0);if(i==p){g/=p;l/=p;r[i]=100-100/(1+g/(l||1e-9))}}else{g=(g*(p-1)+Math.max(d,0))/p;l=(l*(p-1)+Math.max(-d,0))/p;r[i]=100-100/(1+g/(l||1e-9))}}return r}
+function calc(){const c=D.map(d=>d.c),m={},M=(k,f)=>m[k]||(m[k]=f());
+zd=1;X={close:c,open:D.map(d=>d.o),high:D.map(d=>d.h),low:D.map(d=>d.l),ema:p=>M('e'+p,()=>EMA(c,p)),sma:p=>M('s'+p,()=>SMA(c,p)),rsi:(p=14)=>M('r'+p,()=>RSI(c,p)),
+macd:(a=12,b=26,s=9)=>M('m'+a+b+s,()=>{const ea=EMA(c,a),eb=EMA(c,b),l=ea.map((v,i)=>v-eb[i]),sn=EMA(l,s);return{line:l,signal:sn,hist:l.map((v,i)=>v-sn[i])}}),
+atr:(p=14)=>M('a'+p,()=>{let a=0;return D.map((d,i)=>{const t=i?Math.max(d.h-d.l,Math.abs(d.h-D[i-1].c),Math.abs(d.l-D[i-1].c)):d.h-d.l;return a=i<p?(a*i+t)/(i+1):(a*(p-1)+t)/p})}),
+bb:(p=20,k=2)=>M('b'+p+k,()=>{const mid=SMA(c,p),sd=c.map((_,i)=>{if(i<p-1)return NaN;let s=0;for(let j=i-p+1;j<=i;j++)s+=(c[j]-mid[i])**2;return Math.sqrt(s/p)});return{mid,up:mid.map((v,i)=>v+k*sd[i]),low:mid.map((v,i)=>v-k*sd[i])}})}}
+function run(i){try{ex=null;return strategy(i,X)}catch(e){ex=e.message;return wait('Error strategi: '+e.message)}}
 let quiet=0;
 function toast(t,b){const e=$('#toast');e.innerHTML='<b>'+t+'</b><br>'+b;e.style.display='block';clearTimeout(toast.h);toast.h=setTimeout(()=>e.style.display='none',8000)}
 async function notify(t,b){try{toast(t,b)}catch(e){}if(!('Notification' in window)||Notification.permission!='granted')return;try{const r=await navigator.serviceWorker.getRegistration(),o={body:b,icon:'icon-192.png',badge:'icon-192.png',tag:'gold-'+Date.now(),vibrate:[300,120,300,120,300],requireInteraction:true};if(r)r.showNotification(t,o);else new Notification(t,o)}catch(e){}}
-const sk=()=>'gold_snd_v1';
-function save(){try{localStorage.setItem(sk(),JSON.stringify({botOn,bal:A.bal,b0:A.b0,last:A.last,lastT:A.lastT,pos:A.pos,pend:A.pend,uses:A.uses,trades:A.trades.slice(-200)}))}catch(e){}}
-function catchUp(){quiet=1;const n0=A.trades.length;let sigs=0;const from=A.lastT||D[D.length-2].t;for(let i=0;i<D.length-1;i++){if(D[i].t<=from)continue;step(A,D[i].h,D[i].l,i);const b=A.last;onBar(A,i);if(A.last!=b&&A.last!='WAIT')sigs++;A.lastT=D[i].t}quiet=0;const dn=A.trades.length-n0;if(sigs||dn)notify('Gold Robot aktif lagi',`Selama aplikasi tertutup: ${sigs} setup, ${dn} trade selesai`)}
-function restore(){let S=null;try{S=JSON.parse(localStorage.getItem(sk())||'null')}catch(e){}if(!S)return;A=Object.assign(mkA(1),{bal:S.bal,b0:S.b0,last:S.last,lastT:S.lastT,pos:S.pos,pend:S.pend||[],uses:S.uses||{},trades:S.trades||[]});const ix=t=>D.findIndex(d=>d.t==t);if(A.pos)A.pos.i=ix(A.pos.t);A.trades.forEach(t=>{t.i=ix(t.t);t.j=ix(t.tj)});if(S.botOn){botOn=1;catchUp()}}
+const sk=()=>'gold_state_'+tf;
+function save(){try{localStorage.setItem(sk(),JSON.stringify({botOn,bal:A.bal,b0:A.b0,last:A.last,lastT:A.lastT,pos:A.pos,pend:A.pend,trades:A.trades.slice(-200)}))}catch(e){}}
+function catchUp(){quiet=1;const n0=A.trades.length;let sigs=0;const from=A.lastT||D[D.length-2].t;for(let i=0;i<D.length-1;i++){if(D[i].t<=from)continue;step(A,D[i].h,D[i].l,i);const b=A.last;onBar(A,i);smartOrders(A,i);if(A.last!=b&&A.last!='WAIT')sigs++;A.lastT=D[i].t}quiet=0;const dn=A.trades.length-n0;if(sigs||dn)notify('Gold Robot aktif lagi',`Selama aplikasi tertutup: ${sigs} sinyal, ${dn} trade selesai`)}
+function restore(){let S=null;try{S=JSON.parse(localStorage.getItem(sk())||'null')}catch(e){}if(!S)return;A=Object.assign(mkA(1),{bal:S.bal,b0:S.b0,last:S.last,lastT:S.lastT,pos:S.pos,pend:S.pend||[],trades:S.trades||[]});const ix=t=>D.findIndex(d=>d.t==t);if(A.pos)A.pos.i=ix(A.pos.t);A.trades.forEach(t=>{t.i=ix(t.t);t.j=ix(t.tj)});if(S.botOn){botOn=1;catchUp()}}
+/* ===== ORDER PENDING SMART (zona SnD/SnR + arah MA) ===== */
 const nt=(A,t,b)=>{if(A.live&&!quiet)notify(t,b)};
-/* Rule: posisi terbuka -> tidak ada order/posisi baru. Pending hanya terisi jika belum ada posisi. */
 function step(A,h,l,j){manage(A,h,l,j);if(!A.pos&&fillPend(A,h,l,j))manage(A,h,l,j)}
-function fillPend(A,h,l,j){if(A.pos)return 0;for(const o of A.pend){if(D[j].t<=o.t)continue;if(!(o.dir>0?l<=o.entry:h>=o.entry))continue;
-const lot=Math.max(.01,Math.floor(A.bal*CONFIG.RISK_PCT/100/(Math.abs(o.entry-o.sl)*100)*100)/100);A.pos={dir:o.dir,entry:o.entry,sl:o.sl,tp:o.tp,lot,i:j,t:D[j].t,via:o.type,zk:o.zk};A.uses[o.zk]=(A.uses[o.zk]||0)+1;A.pend=[];
+function fillPend(A,h,l,j){for(const o of A.pend){if(D[j].t<=o.t)continue;const ok=o.type=='BUY LIMIT'?l<=o.entry:o.type=='SELL LIMIT'?h>=o.entry:o.type=='BUY STOP'?h>=o.entry:l<=o.entry;if(!ok)continue;
+const lot=Math.max(.01,Math.floor(A.bal*CONFIG.RISK_PCT/100/(Math.abs(o.entry-o.sl)*100)*100)/100);A.pos={dir:o.dir,entry:o.entry,sl:o.sl,tp:o.tp,lot,i:j,t:D[j].t,via:o.type};A.pend=[];
 nt(A,o.type+' terisi - XAU/USD',`Entry ${f2(o.entry)} | TP ${f2(o.tp)} | SL ${f2(o.sl)} | ${lot} lot`);return 1}return 0}
-function closeP(A,px,why,j){const p=A.pos,pnl=(px-p.entry)*p.dir*100*p.lot-CONFIG.SPREAD*100*p.lot;A.bal+=pnl;A.trades.push({...p,exit:px,pnl,why,j,tj:D[j].t});A.pos=null;if(A.live&&!quiet)notify((why=='TP'?'Take Profit tersentuh':why=='SL'?'Stop Loss tersentuh':'Posisi ditutup ('+why+')')+' - XAU/USD',`${p.dir>0?'BUY':'SELL'} ${f2(p.entry)} -> ${f2(px)} | ${pnl>=0?'+':'-'}$${f2(Math.abs(pnl))} | Balance $${f2(A.bal)}`)}
+function smartOrders(A,i){if(!CONFIG.SMART_PENDING||!(i>40))return;const now=D[i].t,drop=(o,w)=>nt(A,'Pending dibatalkan - '+o.type,f2(o.entry)+': '+w);
+if(A.pos){A.pend.forEach(o=>drop(o,'posisi sudah terbuka'));A.pend=[];return}
+A.pend=A.pend.filter(o=>{if(now>=o.exp){drop(o,'kedaluwarsa');return false}return true});
+const Zs=zones(i),at=X.atr(14)[i],px=D[i].c,f=X[CONFIG.MA_TYPE](CONFIG.FAST)[i],s2=X[CONFIG.MA_TYPE](CONFIG.SLOW)[i];if(!(at>0)||isNaN(f)||isNaN(s2))return;
+const bull=f>s2,dem=Zs.snd.filter(z=>z.type=='D'&&z.top<px).sort((a,b)=>b.top-a.top)[0],sup=Zs.snd.filter(z=>z.type=='S'&&z.bot>px).sort((a,b)=>a.bot-b.bot)[0],res=Zs.snr.find(r=>r.t=='R'),spt=Zs.snr.find(r=>r.t=='S'),C=[];
+const mkO=(type,dir,entry,sl,src)=>{const risk=Math.abs(entry-sl);if(!(risk>.3*at)||Math.abs(entry-px)>8*at)return;
+const walls=(dir>0?[sup&&sup.bot,res&&res.p]:[dem&&dem.top,spt&&spt.p]).filter(v=>v!=null&&(dir>0?v>entry:v<entry)).sort((a,b)=>dir>0?a-b:b-a);
+let tp=entry+dir*risk*CONFIG.RR;if(walls.length){const rr=Math.abs(walls[0]-entry)/risk;if(rr<CONFIG.RR_MIN)return;if(rr<CONFIG.RR)tp=walls[0]}
+C.push({type,dir,entry,sl,tp,src,t:now,exp:now+CONFIG.PEND_BARS*SEC[tf],key:type+':'+Math.round(entry)})};
+if(bull||CONFIG.COUNTER_TREND){if(dem)mkO('BUY LIMIT',1,dem.top,dem.bot-.3*at,'Demand zone');if(res)mkO('BUY STOP',1,res.p+.2*at,res.p+.2*at-CONFIG.SL_ATR*at,'Breakout resistance')}
+if(!bull||CONFIG.COUNTER_TREND){if(sup)mkO('SELL LIMIT',-1,sup.bot,sup.top+.3*at,'Supply zone');if(spt)mkO('SELL STOP',-1,spt.p-.2*at,spt.p-.2*at+CONFIG.SL_ATR*at,'Breakdown support')}
+const keys=new Set(C.map(c=>c.key));A.pend=A.pend.filter(o=>{if(keys.has(o.key))return true;drop(o,'setup berubah');return false});
+for(const c of C){if(A.pend.length>=CONFIG.MAX_PENDING)break;if(!A.pend.some(o=>o.key==c.key)){A.pend.push(c);nt(A,'Pending order dibuat - '+c.type,`Entry ${f2(c.entry)} | TP ${f2(c.tp)} | SL ${f2(c.sl)} | ${c.src} | RR 1:${(Math.abs(c.tp-c.entry)/Math.abs(c.entry-c.sl)).toFixed(1)}`)}}}
+function openP(A,dir,i){const e=D[i].c,sl=X.atr(14)[i]*CONFIG.SL_ATR,lot=Math.max(.01,Math.floor(A.bal*CONFIG.RISK_PCT/100/(sl*100)*100)/100);A.pos={dir,entry:e,sl:e-dir*sl,tp:e+dir*sl*CONFIG.RR,lot,i,t:D[i].t};A.pend=[];if(A.live&&!quiet)notify((dir>0?'BUY':'SELL')+' dibuka XAU/USD',`Entry ${f2(e)} | TP ${f2(A.pos.tp)} | SL ${f2(A.pos.sl)} | ${lot} lot`)}
+function closeP(A,px,why,j){const p=A.pos,pnl=(px-p.entry)*p.dir*100*p.lot;A.bal+=pnl;A.trades.push({...p,exit:px,pnl,why,j,tj:D[j].t});A.pos=null;if(A.live&&!quiet)notify((why=='TP'?'Take Profit tersentuh':why=='SL'?'Stop Loss tersentuh':'Posisi ditutup ('+why+')')+' - XAU/USD',`${p.dir>0?'BUY':'SELL'} ${f2(p.entry)} -> ${f2(px)} | ${pnl>=0?'+':'-'}$${f2(Math.abs(pnl))} | Balance $${f2(A.bal)}`)}
 function manage(A,h,l,j){const p=A.pos;if(!p)return;if(p.dir>0){if(l<=p.sl)closeP(A,p.sl,'SL',j);else if(h>=p.tp)closeP(A,p.tp,'TP',j)}else{if(h>=p.sl)closeP(A,p.sl,'SL',j);else if(l<=p.tp)closeP(A,p.tp,'TP',j)}}
-function onBar(A,i){const g=run(i,A),now=D[i].t;
-if(A.pos)A.pend=[];
-else{A.pend=A.pend.filter(o=>{if(now>=o.exp){nt(A,'Pending dibatalkan - '+o.type,f2(o.entry)+': kedaluwarsa');return false}if(g.dir&&o.dir!=g.dir){nt(A,'Pending dibatalkan - '+o.type,f2(o.entry)+': tren M15 berubah');return false}return true});
-if(g.order&&A.pend.length<CONFIG.MAX_PENDING&&!A.pend.some(o=>o.key==g.order.key)){const c=g.order;A.pend.push(c);nt(A,'Pending order dibuat - '+c.type,`Entry ${f2(c.entry)} | TP ${f2(c.tp)} | SL ${f2(c.sl)} | ${c.src}`)}}
-A.last=g.sig;return g}
+function onBar(A,i){const g=run(i);if(g.sig!='WAIT'&&g.sig!=A.last){const dir=g.sig=='BUY'?1:-1;if(A.pos&&A.pos.dir!=dir)closeP(A,D[i].c,'Reverse',i);if(!A.pos)openP(A,dir,i)}A.last=g.sig;return g}
 function stats(A){const t=A.trades,w=t.filter(x=>x.pnl>0),gw=w.reduce((a,x)=>a+x.pnl,0),gl=-t.filter(x=>x.pnl<=0).reduce((a,x)=>a+x.pnl,0);let e=A.b0,pk=e,dd=0;t.forEach(x=>{e+=x.pnl;pk=Math.max(pk,e);dd=Math.max(dd,(pk-e)/pk*100)});return{n:t.length,wr:t.length?w.length/t.length*100:0,pf:gl?gw/gl:gw?99:0,dd,net:A.bal-A.b0}}
 const eq=A=>A.bal+(A.pos?(D[D.length-1].c-A.pos.entry)*A.pos.dir*100*A.pos.lot:0);
-function backtest(){const B=mkA();for(let i=60;i<D.length;i++){step(B,D[i].h,D[i].l,i);onBar(B,i)}if(B.pos)closeP(B,D[D.length-1].c,'End',D.length-1);const s=stats(B);
-$('#btr').innerHTML=`<div class="kv"><div><small>Trade</small><b>${s.n}</b></div><div><small>Win rate</small><b>${s.wr.toFixed(0)}%</b></div><div><small>Profit factor</small><b>${s.pf.toFixed(2)}</b></div><div><small>Net P/L</small><b class="${s.net>=0?'up':'dn'}">${s.net>=0?'+':''}$${f2(s.net)}</b></div><div><small>Max drawdown</small><b>${s.dd.toFixed(1)}%</b></div><div><small>Candle M1 diuji</small><b>${D.length}</b></div></div>`}
-function showSig(){sg=run(D.length-2);const col=sg.sig=='BUY'?'var(--up)':sg.sig=='SELL'?'var(--dn)':'var(--ac)';$('#sg').textContent=sg.sig;$('#sg').style.color=col;$('#cf').style.cssText=`width:${(sg.stage||0)/3*100}%;background:${col}`;$('#cft').textContent=`Tahap ${sg.stage||0}/3 · 1 Zona M15 → 2 Harga di zona → 3 CHoCH M1`;$('#why').innerHTML=(sg.tr?`<li>${sg.tr}</li>`:'')+`<li>${sg.why}</li>`+(ex?`<li class="dn">${ex}</li>`:'')}
-/* ---- data TwelveData (hanya M1; M15 dibentuk dari M1) ---- */
+function backtest(){const B=mkA();for(let i=40;i<D.length;i++){step(B,D[i].h,D[i].l,i);onBar(B,i);smartOrders(B,i)}if(B.pos)closeP(B,D[D.length-1].c,'End',D.length-1);const s=stats(B);
+$('#btr').innerHTML=`<div class="kv"><div><small>Trade</small><b>${s.n}</b></div><div><small>Win rate</small><b>${s.wr.toFixed(0)}%</b></div><div><small>Profit factor</small><b>${s.pf.toFixed(2)}</b></div><div><small>Net P/L</small><b class="${s.net>=0?'up':'dn'}">${s.net>=0?'+':''}$${f2(s.net)}</b></div><div><small>Max drawdown</small><b>${s.dd.toFixed(1)}%</b></div><div><small>Fill pending</small><b>${B.trades.filter(t=>t.via).length}</b></div><div><small>Candle diuji</small><b>${D.length}</b></div></div>`}
+function showSig(){sg=run(D.length-2);const col=sg.sig=='BUY'?'var(--up)':sg.sig=='SELL'?'var(--dn)':'var(--ac)',cf=sg.sig=='WAIT'?0:100;$('#sg').textContent=sg.sig;$('#sg').style.color=col;$('#cf').style.cssText=`width:${cf}%;background:${col}`;$('#cft').textContent=sg.sig=='WAIT'?'Menunggu persilangan':'Persilangan terdeteksi pada candle terakhir';$('#why').innerHTML=`<li>${sg.why}</li>`+(ex?`<li class="dn">${ex}</li>`:'')}
+/* ---- data TwelveData ---- */
 const goldOpen=()=>{const d=new Date(),w=d.getUTCDay(),h=d.getUTCHours();return !(w==6||(w==5&&h>=22)||(w==0&&h<22))};
 const td=v=>({t:Date.parse(v.datetime.replace(' ','T')+'Z')/1000,o:+v.open,h:+v.high,l:+v.low,c:+v.close});
 async function fetchBars(n){addUsed();const j=await(await fetch(`https://api.twelvedata.com/time_series?symbol=${CONFIG.SYMBOL}&interval=${tf}&outputsize=${n}&timezone=UTC&apikey=${KEY}`)).json();if(j.status=='error'||!j.values)throw Error(j.message||'data kosong');return j.values.slice().reverse().map(td)}
-function feed(b){const L=D[D.length-1];if(b.t==L.t)Object.assign(L,b);else if(b.t>L.t){const ae=V.s+cw()/V.bw>=D.length-1;D.push(b);if(ae)V.s++;calc();if(botOn){onBar(A,D.length-2);A.lastT=D[D.length-2].t}showSig()}else return;if(botOn){const Z2=D[D.length-1];step(A,Z2.h,Z2.l,D.length-1)}save();dirty=1}
-async function poll(){lastPoll=Date.now();try{const g=Math.ceil((Date.now()/1e3-D[D.length-1].t)/60)+2;(await fetchBars(Math.min(500,Math.max(3,g)))).forEach(feed)}catch(e){}dirty=1}
-function startPoll(){clearInterval(pv);lastPoll=Date.now();pv=setInterval(()=>{if(!live||document.hidden||!goldOpen()||used>=CONFIG.MAX_CREDITS)return;if(Date.now()-lastPoll>=12e4)poll()},30000)}
-function demo(){const sc=60,vol=.001*Math.sqrt(sc/900)*1.6;let p=4150,t=Math.floor(Date.now()/1e3/sc)*sc,sd=7+sc%97;const r=()=>(sd=(sd*16807)%2147483647)/2147483647,g=()=>Math.sqrt(-2*Math.log(r()))*Math.cos(6.283*r());D=[];for(let i=0;i<4000;i++){const o=p,c=o*(1+Math.sin(i/90)*vol*.25+g()*vol);D.push({t:t-(3999-i)*sc,o,h:Math.max(o,c)*(1+vol/4),l:Math.min(o,c)*(1-vol/4),c});p=c}}
+function feed(b){const L=D[D.length-1];if(b.t==L.t)Object.assign(L,b);else if(b.t>L.t){const ae=V.s+cw()/V.bw>=D.length-1;D.push(b);if(D.length>1500){D.shift();V.s--;A.trades.forEach(t=>{t.i--;t.j--});if(A.pos)A.pos.i--}if(ae)V.s++;calc();if(botOn){onBar(A,D.length-2);smartOrders(A,D.length-2);A.lastT=D[D.length-2].t}showSig();if(sg.sig!='WAIT')notify('Sinyal '+sg.sig+' XAU/USD '+tf,sg.why)}else return;if(botOn){const Z2=D[D.length-1];step(A,Z2.h,Z2.l,D.length-1)}save();dirty=1}
+async function poll(){lastPoll=Date.now();try{const g=Math.ceil((Date.now()/1e3-D[D.length-1].t)/SEC[tf])+2;(await fetchBars(Math.min(500,Math.max(3,g)))).forEach(feed)}catch(e){}dirty=1}
+function startPoll(){clearInterval(pv);lastPoll=Date.now();pv=setInterval(()=>{if(!live||document.hidden||!goldOpen()||used>=CONFIG.MAX_CREDITS)return;const s=SEC[tf],n=Date.now(),nb=s>=300&&Math.floor(n/1e3/s)!=Math.floor(lastPoll/1e3/s);if(nb||n-lastPoll>=(s>=300?3e5:12e4))poll()},30000)}
+function demo(){const sc=SEC[tf],vol=.001*Math.sqrt(sc/900);let p=4150,t=Math.floor(Date.now()/1e3/sc)*sc,sd=7+sc%97;const r=()=>(sd=(sd*16807)%2147483647)/2147483647,g=()=>Math.sqrt(-2*Math.log(r()))*Math.cos(6.283*r());D=[];for(let i=0;i<400;i++){const o=p,c=o*(1+Math.sin(i/(20+sc/600))*vol*.3+g()*vol);D.push({t:t-(399-i)*sc,o,h:Math.max(o,c)*(1+vol/4),l:Math.min(o,c)*(1-vol/4),c});p=c}}
 function setMsg(h){const m=$('#msg');m.style.display=h?'flex':'none';m.innerHTML=h?`<div>${h}</div>`:''}
 function explain(e){const m=e.message||String(e);if(e instanceof TypeError||/fetch|network|load failed/i.test(m))return 'Browser tidak bisa menjangkau api.twelvedata.com. Biasanya karena file dibuka di dalam aplikasi lain (misalnya Claude) atau internet mati. Simpan file ke HP lalu buka lewat Chrome.';return 'Twelve Data menjawab: '+m}
 const tech=e=>`<small>Detail teknis: ${e.name||'Error'} - ${e.message||e} | protokol ${typeof location!='undefined'?location.protocol:'?'} | online ${typeof navigator!='undefined'?navigator.onLine:'?'} | key ${(KEY||'-').slice(0,4)}...</small>`
 function startDemo(){live=0;demo();calc();resetView();setMsg(null);const st=$('#st');st.className='pill demo';st.textContent='DEMO (bukan harga pasar)';showSig();dirty=1}
-async function connect(){live=0;clearInterval(pv);botOn=0;A=mkA(1);lastN=-1;D=[];sg=null;const st=$('#st');st.className='pill';st.textContent='MENGHUBUNGKAN';$('#info').textContent='';
-setMsg('<b>Mengambil data XAU/USD M1 dari Twelve Data...</b>');$('#sg').textContent='-';$('#sg').style.color='';$('#why').innerHTML='';$('#cf').style.width='0';$('#cft').textContent='';$('#pos').innerHTML='';dirty=1;
+async function connect(){tf=$('#tf').value;live=0;clearInterval(pv);botOn=0;A=mkA(1);lastN=-1;D=[];sg=null;const st=$('#st');st.className='pill';st.textContent='MENGHUBUNGKAN';$('#info').textContent='';
+setMsg('<b>Mengambil data XAU/USD '+tf+' dari Twelve Data...</b>');$('#sg').textContent='-';$('#sg').style.color='';$('#why').innerHTML='';$('#cf').style.width='0';$('#cft').textContent='';$('#pos').innerHTML='';dirty=1;
 try{let er,ok=0;const ks=[];try{ks.push(localStorage.getItem('td_key'))}catch(e){}ks.push(...CONFIG.API_KEYS);
 if(!ks.filter(Boolean).length){st.className='pill err';st.textContent='BUTUH API KEY';setMsg('<b>Masukkan API key Twelve Data</b><p>Cukup sekali. Key disimpan di HP ini saja, tidak ikut ke GitHub.</p><div class="row" style="justify-content:center"><input id="mk" placeholder="API key" style="background:var(--pn2);color:var(--tx);border:1px solid var(--bd);border-radius:9px;padding:8px;min-width:0"><button class="go" id="mb">Simpan &amp; hubungkan</button></div>');$('#mb').onclick=()=>{const v=$('#mk').value.trim();if(v){try{localStorage.setItem('td_key',v)}catch(e){}connect()}};dirty=1;return}
-for(const k of ks.filter(Boolean)){KEY=k;try{D=await fetchBars(5000);ok=1;break}catch(e){er=e;if(e instanceof TypeError)break}}
-if(!ok)throw er||Error('tidak ada API key');if(D.length<300)throw Error('data terlalu sedikit ('+D.length+' candle)');
+for(const k of ks.filter(Boolean)){KEY=k;try{D=await fetchBars(1000);ok=1;break}catch(e){er=e;if(e instanceof TypeError)break}}
+if(!ok)throw er||Error('tidak ada API key');if(D.length<60)throw Error('data terlalu sedikit ('+D.length+' candle)');
 live=1;st.className='pill live';st.textContent='LIVE XAU/USD';setMsg(null);calc();restore();resetView();showSig();save();startPoll()}
 catch(e){D=[];st.className='pill err';st.textContent='BELUM TERHUBUNG';setMsg('<b>Gagal terhubung</b><p>'+explain(e)+'</p><p>'+tech(e)+'</p><div class="row"><button class="go" id="m1">Coba lagi</button><button id="m2">Lihat data demo</button></div>');$('#m1').onclick=connect;$('#m2').onclick=startDemo}
 dirty=1}
 /* ---- gambar ---- */
-function fit(c){const r=c.getBoundingClientRect(),d=devicePixelRatio||1,W=Math.round(r.width*d),H2=Math.round(r.height*d);if(c.width!=W||c.height!=H2){c.width=W;c.height=H2}const x=c.getContext('2d');x.setTransform(d,0,0,d,0,0);x.clearRect(0,0,r.width,r.height);return{x,w:r.width,h:r.height}}
-const V={s:0,bw:8,z:1},PRW=58;
+function fit(c){const r=c.getBoundingClientRect(),d=devicePixelRatio||1,W=Math.round(r.width*d),H=Math.round(r.height*d);if(c.width!=W||c.height!=H){c.width=W;c.height=H}const x=c.getContext('2d');x.setTransform(d,0,0,d,0,0);x.clearRect(0,0,r.width,r.height);return{x,w:r.width,h:r.height}}
+let zd=1,PL=null,Z={snr:[],snd:[]};const V={s:0,bw:8,z:1},PRW=58;
 const cw=()=>Math.max(50,$('#cv').getBoundingClientRect().width-PRW);
 function resetView(){V.bw=Math.max(4,Math.min(14,cw()/80));V.s=D.length-cw()/V.bw+5;dirty=1}
 function clampV(){if(!(V.bw>=2))V.bw=8;V.bw=Math.min(40,V.bw);const w=cw()/V.bw;if(!isFinite(V.s))V.s=D.length-w+5;V.s=Math.max(-w*.7,Math.min(D.length-3,V.s))}
 function zoomAt(px,f){const i=(px-V.bw/2)/V.bw+V.s;V.bw=Math.min(40,Math.max(2,V.bw*f));V.s=i-(px-V.bw/2)/V.bw;clampV();dirty=1}
-const tIdx=t=>{let a=0,b=D.length-1;while(a<b){const m=(a+b)>>1;D[m].t<t?a=m+1:b=m}return a};
-function draw(){dirty=0;if(!D.length){fit($('#cv'));fit($('#cr'));return}clampV();
-const lastH=HI[D.length-1];try{Z=lastH>=40?zonesH(lastH):[]}catch(e){Z=[]}
-const cs=getComputedStyle(document.documentElement),g=n=>cs.getPropertyValue(n).trim(),UP=g('--up'),DN=g('--dn'),GR=g('--bd'),MU=g('--mu'),TX=g('--tx'),m=fit($('#cv')),x=m.x,PR=PRW,W=m.w-PR,bw=V.bw,h=m.h,i0=Math.max(0,Math.floor(V.s)),i1=Math.min(D.length-1,Math.ceil(V.s+W/bw)),P=A.pos,PD=P?[]:A.pend;
+/* Zona SnD (supply/demand) dan SnR (support/resistance) */
+function zones(n=D.length-1){const a=X.atr(14),out={snr:[],snd:[]};if(n<40)return out;
+for(let k=Math.max(30,n-600);k<n;k++){const d=D[k],body=Math.abs(d.c-d.o),rg=d.h-d.l;if(body<1.5*a[k-1]||body<.7*rg)continue;const up=d.c>d.o;let b=k-1;while(b>k-4&&b>0&&((D[b].c>D[b].o)==up))b--;const B=D[b];if((B.c>B.o)==up)continue;
+const z=up?{type:'D',i:b,top:Math.max(B.o,B.c),bot:B.l}:{type:'S',i:b,top:B.h,bot:Math.min(B.o,B.c)};let dead=0;for(let m=k+1;m<=n;m++){if(up?D[m].c<z.bot:D[m].c>z.top){dead=1;break}}if(!dead)out.snd.push(z)}
+out.snd=['D','S'].flatMap(t=>out.snd.filter(z=>z.type==t).sort((p,q)=>q.i-p.i).slice(0,3));
+const H=5,pv=[];for(let k=Math.max(H,n-600);k<n-H;k++){let hi=1,lo=1;for(let j=1;j<=H;j++){if(D[k].h<=D[k-j].h||D[k].h<=D[k+j].h)hi=0;if(D[k].l>=D[k-j].l||D[k].l>=D[k+j].l)lo=0}if(hi)pv.push({i:k,p:D[k].h});if(lo)pv.push({i:k,p:D[k].l})}
+const tol=a[n]*.6,cl=[];pv.forEach(q=>{const c=cl.find(c=>Math.abs(c.p-q.p)<=tol);if(c){c.p=(c.p*c.n+q.p)/(c.n+1);c.n++;c.i=Math.min(c.i,q.i)}else cl.push({p:q.p,n:1,i:q.i})});
+const px=D[n].c,lv=cl.filter(c=>c.n>=2);
+out.snr=[...lv.filter(c=>c.p>px).sort((u,v)=>u.p-v.p).slice(0,3).map(c=>({...c,t:'R'})),...lv.filter(c=>c.p<=px).sort((u,v)=>v.p-u.p).slice(0,3).map(c=>({...c,t:'S'}))];return out}
+/* Rencana posisi dari sinyal terakhir (tampil walau bot belum/tidak punya posisi) */
+function findPlan(){const n=D.length-2;for(let j=n;j>=Math.max(30,n-120);j--){const g=run(j);if(g.sig=='WAIT')continue;const dir=g.sig=='BUY'?1:-1,e=D[j].c,sl=X.atr(14)[j]*CONFIG.SL_ATR;return{dir,entry:e,sl:e-dir*sl,tp:e+dir*sl*CONFIG.RR,i:j}}return null}
+const hit=P=>{for(let k=P.i+1;k<D.length;k++){if(P.dir>0?(D[k].l<=P.sl||D[k].h>=P.tp):(D[k].h>=P.sl||D[k].l<=P.tp))return 1}return 0};
+function draw(){dirty=0;if(!D.length){fit($('#cv'));fit($('#cr'));return}clampV();if(zd){zd=0;try{Z=zones()}catch(e){Z={snr:[],snd:[]}}try{PL=findPlan()}catch(e){PL=null}}
+const cs=getComputedStyle(document.documentElement),g=n=>cs.getPropertyValue(n).trim(),UP=g('--up'),DN=g('--dn'),GR=g('--bd'),MU=g('--mu'),TX=g('--tx'),m=fit($('#cv')),x=m.x,PR=PRW,W=m.w-PR,bw=V.bw,h=m.h,i0=Math.max(0,Math.floor(V.s)),i1=Math.min(D.length-1,Math.ceil(V.s+W/bw)),p=A.pos;
+const PD=!p?A.pend:[],P=p||(!PD.length&&PL&&!hit(PL)?PL:null),isPlan=!p&&!!P;
 let lo=1e9,hi=-1e9;for(let i=i0;i<=i1;i++){lo=Math.min(lo,D[i].l);hi=Math.max(hi,D[i].h)}if(lo>hi){lo=D[D.length-1].l;hi=D[D.length-1].h}
 if(P&&i1>=D.length-2){lo=Math.min(lo,P.sl,P.tp);hi=Math.max(hi,P.sl,P.tp)}if(i1>=D.length-2)PD.forEach(o=>{lo=Math.min(lo,o.sl,o.tp,o.entry);hi=Math.max(hi,o.sl,o.tp,o.entry)});const pd=(hi-lo)*.07||1;lo-=pd;hi+=pd;
 const XX=i=>(i-V.s)*bw+bw/2,Y=v=>12+(hi-v)/(hi-lo)*(h-24);x.font='11px system-ui';
 for(let k=0;k<=5;k++){const v=lo+(hi-lo)*k/5,y=Math.round(Y(v))+.5;x.strokeStyle=GR;x.beginPath();x.moveTo(0,y);x.lineTo(W,y);x.stroke();x.fillStyle=MU;x.fillText(f2(v),W+6,y+4)}
 x.save();x.beginPath();x.rect(0,0,W,h);x.clip();
-if(V.z){Z.forEach(z=>{const x0=Math.max(-5,XX(tIdx(z.t))-bw/2),y0=Y(z.top),y1=Y(z.bot);if(y1<0||y0>h)return;const c=z.type=='D'?UP:DN,u=A.uses[z.k]||0,dim=u>=CONFIG.ZONE_ENTRIES;x.fillStyle=c+(dim?'12':'28');x.fillRect(x0,y0,W-x0,y1-y0);x.strokeStyle=c+(dim?'55':'bb');x.setLineDash(dim?[4,4]:[]);x.strokeRect(x0+.5,y0+.5,W-x0,y1-y0);x.setLineDash([]);x.fillStyle=c;x.fillText((z.type=='D'?'DEMAND':'SUPPLY')+' M15 · entri '+u+'/'+CONFIG.ZONE_ENTRIES,Math.max(4,x0+4),y0+11)})}
+if(V.z){Z.snd.forEach(z=>{const x0=Math.max(-5,XX(z.i)-bw/2),y0=Y(z.top),y1=Y(z.bot);if(x0>W||y1<0||y0>h)return;const c=z.type=='D'?UP:DN;x.fillStyle=c+'24';x.fillRect(x0,y0,W-x0,y1-y0);x.strokeStyle=c+'aa';x.strokeRect(x0+.5,y0+.5,W-x0,y1-y0);x.fillStyle=c;x.fillText(z.type=='D'?'DEMAND':'SUPPLY',Math.max(4,x0+4),y0+11)})}
 if(P){const x0=Math.max(0,XX(P.i>=0?P.i:i0)-bw/2),yE=Y(P.entry);[[P.tp,UP],[P.sl,DN]].forEach(([v,c])=>{const y=Y(v);x.fillStyle=c+'26';x.fillRect(x0,Math.min(yE,y),W-x0,Math.abs(y-yE))})}
-PD.forEach(o=>{const k=tIdx(o.t),x0=Math.max(0,XX(k)-bw/2),yE=Y(o.entry);[[o.tp,UP],[o.sl,DN]].forEach(([v,c])=>{const y=Y(v);x.fillStyle=c+'1c';x.fillRect(x0,Math.min(yE,y),W-x0,Math.abs(y-yE))});
-if(V.z&&o.ob){const ox=Math.max(0,XX(tIdx(o.ob.t))-bw/2),c=o.dir>0?UP:DN;x.fillStyle=c+'55';x.fillRect(ox,Y(o.ob.top),W-ox,Y(o.ob.bot)-Y(o.ob.top));x.fillStyle=TX;x.fillText('OB M1',Math.max(4,ox+4),Y(o.ob.top)-3);
-const lx=XX(tIdx(o.lt)),ly=Math.round(Y(o.lvl))+.5;x.strokeStyle=TX;x.beginPath();x.moveTo(lx,ly);x.lineTo(XX(k),ly);x.stroke();x.fillText('CHoCH',lx,ly+(o.dir<0?12:-4))}});
+PD.forEach(o=>{const k=D.findIndex(d=>d.t==o.t),x0=Math.max(0,XX(k>=0?k:i0)-bw/2),yE=Y(o.entry);[[o.tp,UP],[o.sl,DN]].forEach(([v,c])=>{const y=Y(v);x.fillStyle=c+'18';x.fillRect(x0,Math.min(yE,y),W-x0,Math.abs(y-yE))})});
 for(let i=i0;i<=i1;i++){const d=D[i],c=d.c>=d.o?UP:DN,xx=Math.round(XX(i))+.5;x.strokeStyle=x.fillStyle=c;x.beginPath();x.moveTo(xx,Y(d.h));x.lineTo(xx,Y(d.l));x.stroke();x.fillRect(xx-bw*.35,Y(Math.max(d.o,d.c)),Math.max(1,bw*.7),Math.max(1,Math.abs(Y(d.o)-Y(d.c))))}
 CONFIG.LINES.forEach(([t,pp,c])=>{const a=X[t](pp);x.strokeStyle=c;x.lineWidth=1.6;x.beginPath();let on=0;for(let i=i0;i<=i1;i++){if(isNaN(a[i]))continue;on?x.lineTo(XX(i),Y(a[i])):x.moveTo(XX(i),Y(a[i]));on=1}x.stroke();x.lineWidth=1});
+if(V.z){Z.snr.forEach(r=>{const y=Math.round(Y(r.p))+.5;if(y<0||y>h)return;const x0=Math.max(0,XX(r.i));x.strokeStyle='#b388ff';x.globalAlpha=.85;x.beginPath();x.moveTo(x0,y);x.lineTo(W,y);x.stroke();x.globalAlpha=1;x.fillStyle='#b388ff';x.textAlign='right';x.fillText(`${r.t=='R'?'RES':'SUP'} ${f2(r.p)} (${r.n}x)`,W-4,y-3);x.textAlign='left'})}
 const mk=(i,dir,c)=>{if(i<i0||i>i1)return;const xx=XX(i),y=dir>0?Y(D[i].l)+13:Y(D[i].h)-13;x.fillStyle=c;x.beginPath();x.moveTo(xx,dir>0?y-9:y+9);x.lineTo(xx-6,dir>0?y+3:y-3);x.lineTo(xx+6,dir>0?y+3:y-3);x.fill()};
 A.trades.forEach(t=>mk(t.i,t.dir,t.dir>0?UP:DN));
-const lines=[...(P?[['ENTRY',P.entry,'#4aa3ff'],['TP',P.tp,UP],['SL',P.sl,DN]]:[]),...PD.flatMap(o=>[[o.type,o.entry,'#f59e0b',1],['TP',o.tp,UP,1],['SL',o.sl,DN,1]])];
+const lines=[...(P?[[isPlan?'ENTRY sinyal':'ENTRY',P.entry,'#4aa3ff'],['TP',P.tp,UP],['SL',P.sl,DN]]:[]),...PD.flatMap(o=>[[o.type,o.entry,'#f59e0b',1],['TP',o.tp,UP,1],['SL',o.sl,DN,1]])];
 if(P)mk(P.i,P.dir,P.dir>0?UP:DN);
 lines.forEach(([l,v,c,q2])=>{x.strokeStyle=x.fillStyle=c;x.lineWidth=1.4;x.setLineDash(q2?[2,4]:[6,4]);x.beginPath();x.moveTo(0,Y(v));x.lineTo(W,Y(v));x.stroke();x.setLineDash([]);x.lineWidth=1;x.fillText((q2&&l!='TP'&&l!='SL'?'PENDING ':'')+l+' '+f2(v),6,Y(v)-4)});
 x.restore();
 lines.forEach(([l,v,c])=>{const y=Y(v);if(y<0||y>h)return;x.fillStyle=c;x.fillRect(W,y-8,PR,16);x.fillStyle='#fff';x.fillText(f2(v),W+5,y+4)});
 const L=D[D.length-1],ly=Y(L.c);if(ly>=0&&ly<=h){x.fillStyle=L.c>=L.o?UP:DN;x.fillRect(W,ly-9,PR,18);x.fillStyle='#fff';x.fillText(f2(L.c),W+5,ly+4)}
-const hv=mouse&&mouse.x<W?Math.min(D.length-1,Math.max(0,Math.round((mouse.x-bw/2)/bw+V.s))):D.length-1,o=D[hv];x.fillStyle=TX;x.fillText(`${CONFIG.SYMBOL} · M1   O ${f2(o.o)}  H ${f2(o.h)}  L ${f2(o.l)}  C ${f2(o.c)}`,8,13);
+const hv=mouse&&mouse.x<W?Math.min(D.length-1,Math.max(0,Math.round((mouse.x-bw/2)/bw+V.s))):D.length-1,o=D[hv];x.fillStyle=TX;x.fillText(`${CONFIG.SYMBOL} · ${tf}   O ${f2(o.o)}  H ${f2(o.h)}  L ${f2(o.l)}  C ${f2(o.c)}`,8,13);
 if(mouse&&mouse.x<W&&hv>=i0&&hv<=i1){x.strokeStyle=MU;x.setLineDash([3,3]);x.beginPath();x.moveTo(XX(hv),0);x.lineTo(XX(hv),h);x.stroke();x.setLineDash([])}
-/* panel bawah: M15 (HTF) = tren EMA50/200 + zona Supply/Demand */
-const q=fit($('#cr')),qx=q.x,n=H.length,s0=Math.max(0,n-90),nb=n-s0,bw2=W/(nb+2);let l2=1e9,h2=-1e9;for(let k=s0;k<n;k++){l2=Math.min(l2,H[k].l);h2=Math.max(h2,H[k].h)}
-if(n){const p2=(h2-l2)*.08||1;l2-=p2;h2+=p2;const QX=k=>(k-s0+.5)*bw2,QY=v=>8+(h2-v)/(h2-l2)*(q.h-16);qx.font='11px system-ui';
-for(let k=0;k<=3;k++){const v=l2+(h2-l2)*k/3;qx.strokeStyle=GR;qx.beginPath();qx.moveTo(0,QY(v));qx.lineTo(W,QY(v));qx.stroke();qx.fillStyle=MU;qx.fillText(f2(v),W+6,QY(v)+4)}
-qx.save();qx.beginPath();qx.rect(0,0,W,q.h);qx.clip();
-Z.forEach(z=>{const k=Math.max(s0,H.findIndex(b=>b.t>=z.t)),c=z.type=='D'?UP:DN,xa=QX(k)-bw2/2;qx.fillStyle=c+'28';qx.fillRect(xa,QY(z.top),W-xa,QY(z.bot)-QY(z.top));qx.strokeStyle=c+'bb';qx.strokeRect(xa+.5,QY(z.top)+.5,W-xa,QY(z.bot)-QY(z.top));qx.fillStyle=c;qx.fillText(z.type=='D'?'DEMAND':'SUPPLY',xa+4,QY(z.top)+11)});
-for(let k=s0;k<n;k++){const d=H[k],c=d.c>=d.o?UP:DN,xx=Math.round(QX(k))+.5;qx.strokeStyle=qx.fillStyle=c;qx.beginPath();qx.moveTo(xx,QY(d.h));qx.lineTo(xx,QY(d.l));qx.stroke();qx.fillRect(xx-bw2*.35,QY(Math.max(d.o,d.c)),Math.max(1,bw2*.7),Math.max(1,Math.abs(QY(d.o)-QY(d.c))))}
-[[HX.e50,'#f5c542'],[HX.e200,'#ffffff']].forEach(([a,c])=>{qx.strokeStyle=c;qx.lineWidth=1.5;qx.beginPath();for(let k=s0;k<n;k++)k==s0?qx.moveTo(QX(k),QY(a[k])):qx.lineTo(QX(k),QY(a[k]));qx.stroke()});qx.lineWidth=1;qx.restore();
-const hh=HI[D.length-1];qx.fillStyle=TX;qx.fillText('M15 (HTF) · EMA50 kuning / EMA200 putih · '+(hh>=0&&HX.e50[hh]<HX.e200[hh]?'Downtrend':'Uptrend'),8,13)}
-ui()}
+const q=fit($('#cr')),qx=q.x,rs=X.rsi(14),RY=v=>6+(100-v)/100*(q.h-12);qx.font='11px system-ui';[30,70].forEach(v=>{qx.strokeStyle=GR;qx.beginPath();qx.moveTo(0,RY(v));qx.lineTo(W,RY(v));qx.stroke();qx.fillStyle=MU;qx.fillText(v,W+6,RY(v)+4)});
+qx.save();qx.beginPath();qx.rect(0,0,W,q.h);qx.clip();qx.strokeStyle='#b388ff';qx.lineWidth=1.5;qx.beginPath();for(let i=i0;i<=i1;i++)i==i0?qx.moveTo(XX(i),RY(rs[i])):qx.lineTo(XX(i),RY(rs[i]));qx.stroke();qx.restore();qx.lineWidth=1;qx.fillStyle='#b388ff';qx.fillText('RSI 14 · '+rs[hv].toFixed(1),8,13);ui()}
 function ui(){const L=D[D.length-1],s=stats(A),E=eq(A),p=A.pos,cl=v=>v>=0?'up':'dn',ch=L.c-D[Math.max(0,D.length-97)].c;$('#px').textContent=f2(L.c);$('#chg').innerHTML=`<span class="${cl(ch)}">${ch>=0?'+':'-'}${f2(Math.abs(ch))}</span>`;
-const pk=JSON.stringify([A.pend.map(o=>[o.type,o.entry]),botOn,D.length]);if(pk!=ui.pk){ui.pk=pk;$('#pd').innerHTML=A.pend.length?'<table><tr><th>Tipe</th><th>Entry</th><th>TP</th><th>SL</th><th>RR</th></tr>'+A.pend.map(o=>`<tr><td class="${o.dir>0?'up':'dn'}">${o.type}</td><td>${f2(o.entry)}</td><td>${f2(o.tp)}</td><td>${f2(o.sl)}</td><td>1:${(Math.abs(o.tp-o.entry)/Math.abs(o.entry-o.sl)).toFixed(1)}</td></tr><tr><td colspan="5"><small>${o.src} · sisa ${Math.max(0,Math.round((o.exp-D[D.length-1].t)/60))} candle</small></td></tr>`).join('')+'</table>':'<small>'+(p?'Posisi terbuka: tidak ada order pending/posisi baru sampai posisi selesai.':botOn?'Belum ada setup CHoCH di zona M15.':'Nyalakan bot untuk membuat order pending otomatis.')+'</small>'}
+const pk=JSON.stringify([A.pend.map(o=>[o.type,o.entry]),botOn,CONFIG.SMART_PENDING,D.length]);if(pk!=ui.pk){ui.pk=pk;$('#pd').innerHTML=A.pend.length?'<table><tr><th>Tipe</th><th>Entry</th><th>TP</th><th>SL</th><th>RR</th></tr>'+A.pend.map(o=>`<tr><td class="${o.dir>0?'up':'dn'}">${o.type}</td><td>${f2(o.entry)}</td><td>${f2(o.tp)}</td><td>${f2(o.sl)}</td><td>1:${(Math.abs(o.tp-o.entry)/Math.abs(o.entry-o.sl)).toFixed(1)}</td></tr><tr><td colspan="5"><small>${o.src} · sisa ${Math.max(0,Math.round((o.exp-D[D.length-1].t)/SEC[tf]))} candle</small></td></tr>`).join('')+'</table>':'<small>'+(!CONFIG.SMART_PENDING?'Smart pending OFF.':botOn?'Belum ada setup zona yang layak (RR minimal '+CONFIG.RR_MIN+').':'Nyalakan bot untuk membuat order pending otomatis.')+'</small>'}
+$('#sp').textContent='Smart pending: '+(CONFIG.SMART_PENDING?'ON':'OFF');
 $('#bot').textContent=botOn?'STOP BOT':'START BOT';$('#bot').className=botOn?'stop':'go';
-$('#pos').innerHTML=p?`<b class="${p.dir>0?'up':'dn'}">${p.dir>0?'BUY':'SELL'} ${p.lot} lot</b> · <b class="${cl(E-A.bal)}">${E-A.bal>=0?'+':''}$${f2(E-A.bal)}</b><br><small>Entry ${f2(p.entry)} · TP ${f2(p.tp)} · SL ${f2(p.sl)}</small>`:`<small>${botOn?'Bot aktif — menunggu setup…':'Bot OFF — tekan START BOT untuk mulai'}</small>`;
+$('#pos').innerHTML=p?`<b class="${p.dir>0?'up':'dn'}">${p.dir>0?'BUY':'SELL'} ${p.lot} lot</b> · <b class="${cl(E-A.bal)}">${E-A.bal>=0?'+':''}$${f2(E-A.bal)}</b><br><small>Entry ${f2(p.entry)} · TP ${f2(p.tp)} · SL ${f2(p.sl)}</small>`:`<small>${botOn?'Bot aktif — menunggu sinyal…':'Bot OFF — tekan START BOT untuk mulai'}</small>`;
 $('#kv').innerHTML=[['Balance','$'+f2(A.bal)],['Equity','$'+f2(E)],['Net P/L',(s.net>=0?'+':'')+'$'+f2(s.net),cl(s.net)],['Trade',s.n],['Win rate',s.wr.toFixed(0)+'%'],['Profit factor',s.pf.toFixed(2)]].map(([a,b,c])=>`<div><small>${a}</small><b class="${c||''}">${b}</b></div>`).join('');
-$('#info').textContent=!live?'':`Kredit API terpakai hari ini ~${used}/800 · update harga tiap ±2 menit. Paper trading, bukan saran keuangan.`;
+$('#info').textContent=!live?'':`Kredit API terpakai hari ini ~${used}/800 · update harga tiap candle & ±5 menit. Paper trading, bukan saran keuangan.`;
 if(lastN!=A.trades.length){lastN=A.trades.length;$('#log').innerHTML='<tr><th>#</th><th>Arah</th><th>Entry</th><th>Exit</th><th>Lot</th><th>P/L</th><th>Ket</th></tr>'+(A.trades.slice(-20).reverse().map((t,k)=>`<tr><td>${A.trades.length-k}</td><td class="${t.dir>0?'up':'dn'}">${t.dir>0?'BUY':'SELL'}</td><td>${f2(t.entry)}</td><td>${f2(t.exit)}</td><td>${t.lot}</td><td class="${t.pnl>=0?'up':'dn'}">${t.pnl>=0?'+':''}${f2(t.pnl)}</td><td>${t.why}${t.via?' · '+t.via:''}</td></tr>`).join('')||'<tr><td colspan=7 style="text-align:center;color:var(--mu)">Belum ada trade</td></tr>')}}
-$('#bot').onclick=()=>{if(!live){alert('Hubungkan ke data live dulu.');return}botOn=!botOn;if(botOn){A.last=sg?sg.sig:'WAIT';A.lastT=D[D.length-2].t;onBar(A,D.length-2)}else A.pend=[];save();dirty=1};$('#rs').onclick=()=>{A=mkA(1);botOn=0;lastN=-1;$('#btr').innerHTML='';save();dirty=1};
+$('#bot').onclick=()=>{if(!live){alert('Hubungkan ke data live dulu.');return}botOn=!botOn;if(botOn){A.last=sg?sg.sig:'WAIT';A.lastT=D[D.length-2].t;smartOrders(A,D.length-2)}else A.pend=[];save();dirty=1};$('#rs').onclick=()=>{A=mkA(1);botOn=0;lastN=-1;$('#btr').innerHTML='';save();dirty=1};
 $('#sk').onclick=()=>{const v=$('#key').value.trim();if(v){try{localStorage.setItem('td_key',v)}catch(e){}connect()}};$('#nt').textContent=('Notification' in window&&Notification.permission=='granted')?'Notifikasi aktif':'Aktifkan notifikasi';
 $('#nt').onclick=async()=>{if(!('Notification' in window)){alert('Browser ini tidak mendukung notifikasi.');return}const p=await Notification.requestPermission();$('#nt').textContent=p=='granted'?'Notifikasi aktif':'Notifikasi ditolak';if(p=='granted')notify('Gold Robot','Notifikasi aktif')};
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&live&&goldOpen()&&used<CONFIG.MAX_CREDITS)poll()});
+$('#sp').onclick=()=>{CONFIG.SMART_PENDING=!CONFIG.SMART_PENDING;if(!CONFIG.SMART_PENDING)A.pend=[];else if(botOn&&live)smartOrders(A,D.length-2);save();dirty=1};
 $('#cp').onclick=()=>{A.pend=[];save();dirty=1};
-$('#btn').onclick=backtest;$('#rc').onclick=connect;
+$('#btn').onclick=backtest;$('#rc').onclick=connect;$('#tf').onchange=connect;
 const cvs=$('#cv'),ptr=new Map();let pinch=0;
 const pt=e=>{const r=cvs.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top}};
 cvs.addEventListener('pointerdown',e=>{try{cvs.setPointerCapture(e.pointerId)}catch(_){}ptr.set(e.pointerId,pt(e));pinch=0});
