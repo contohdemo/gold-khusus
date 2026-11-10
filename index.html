@@ -61,17 +61,31 @@ const CONFIG={
   MAX_ENTRY:2,        // 1 zona HTF maksimal 2x entri
   PEND_BARS:24,       // order limit kedaluwarsa setelah N candle LTF
   ZONE_LOOK:150,      // jumlah candle HTF yang dicari zonanya
-  MAX_CREDITS:780     // batas request/hari (gratis = 800)
+  MAX_CREDITS:780,    // batas request/hari (gratis = 800)
+  /* --- Metode 2: SNR Key Level + Engulfing (video Forex Sarjana) --- */
+  RR_B:2,             // RR trigger Engulfing (video: RR 1:2)
+  ATR_SL:1,           // SL = swing +/- ATR x ini (+ spread untuk SELL)
+  SPREAD:0.3,         // spread broker (USD)
+  MOMENTUM_ATR:0.5,   // candle konfirmasi minimal x ATR
+  SPIKE_ATR:2.5,      // candle > x ATR dianggap spike -> ABAIKAN
+  TP_MODE:'conservative', // 'conservative' = TP tidak melewati swing HTF; 'aggressive' = tanpa batas
+  RR_MIN_B:1.2,       // RR minimum setelah TP dibatasi swing HTF
+  MAX_RISK:15,        // jarak SL maksimal (USD)
+  /* --- Manajemen hybrid --- */
+  SINGLE_RISK:0.6,    // area tunggal (OB saja / SNR saja) = 60% dari RISK_PCT; A+ (OB+SNR) = 100%
+  LOSS_PAUSE:2        // jeda setelah N x SL beruntun
 };
 /* Pasangan Timeframe (video): Trend & Zona SnD -> Perkecil & Konfirmasi */
 const PAIRS={'D1-H1':['1day','1h','D1 -> H1'],'H4-M15':['4h','15min','H4 -> M15'],'H1-M5':['1h','5min','H1 -> M5'],'M15-M1':['15min','1min','M15 -> M1']};
-/* ============ 2. METODE SND ORDER BLOCK (dari video) ============
- 1) Tren HTF: EMA50 > EMA200 = naik (fokus Demand OB, hanya BUY); EMA50 < EMA200 = turun (fokus Supply OB, hanya SELL).
- 2) Zona HTF: Order Block = candle berlawanan terakhir sebelum impuls yang BOS (break of structure) dan meninggalkan Imbalance.
- 3) Zona dihapus jika harga break Key Level, atau sudah 2x entri (1 zona maks 2x entri).
- 4) Perkecil ke LTF: saat harga masuk zona, tunggu Choch (close menembus struktur minor).
- 5) OB LTF = candle berlawanan terakhir di swing high/low. Entry LIMIT di tepi OB, SL beberapa pips di luar swing, TP RR 1:3.
- 6) Aturan tambahan: jika ada posisi terbuka, JANGAN buka posisi lagi (tidak ada order baru). */
+/* ============ 2. METODE HYBRID (2 video digabung) ============
+ AREA (HTF)  : OB = Order Block+BOS+Imbalance (video 1) | SNR = Key Level support/resistance, flip otomatis (video 2).
+               OB yang bertumpuk dengan SNR = grade A+ (risiko penuh). OB saja / SNR saja = risiko 60%.
+ ARAH        : EMA50 vs EMA200 di HTF. Naik = hanya BUY di Demand/Support. Turun = hanya SELL di Supply/Resistance.
+ TRIGGER A   : (area OB / A+) harga masuk area -> Choch di LTF -> LIMIT di OB LTF, SL swing +buffer, TP RR 1:3.
+ TRIGGER B   : (area SNR / A+) Engulfing + candle momentum di LTF -> entry market, SL swing +/- ATR (+spread),
+               TP RR 1:2 dibatasi swing HTF (mode conservative). Candle spike (>2.5x ATR) DIABAIKAN.
+ MANAJEMEN   : hanya 1 posisi; jika ada posisi terbuka tidak ada order baru. Satu area maks 2x entri.
+               Setelah 2x SL beruntun robot jeda sampai candle HTF berikutnya. Trigger yang muncul lebih dulu dipakai. */
 const $=q=>document.querySelector(q),f2=v=>v.toFixed(2),SEC={'1min':60,'5min':300,'15min':900,'1h':3600,'4h':14400,'1day':86400},NM={'1min':'M1','5min':'M5','15min':'M15','1h':'H1','4h':'H4','1day':'D1'};
 let pair='H1-M5';try{pair=localStorage.getItem('pair')||pair}catch(e){}if(!PAIRS[pair])pair='H1-M5';
 let htf=PAIRS[pair][0],ltf=PAIRS[pair][1],D=[],H=[],X,XH,A,botOn=0,live=0,dirty=1,sg=null,pv,lastPoll=0,lastPollH=0,used=0,mouse=null,lastN=-1,quiet=0,KEY='',zc=new Map();
@@ -96,60 +110,93 @@ let key=dn?-1e9:1e9;for(let m=Math.max(0,j-20);m<=j;m++)key=dn?Math.max(key,H[m]
 let dead=0;for(let m=k+1;m<=hi;m++)if(dn?H[m].c>key:H[m].c<key){dead=1;break}if(dead)continue; // break key level
 if(out.some(z=>z.t==H[j].t))continue;out.push({id:(dn?'S':'D')+H[j].t,type:dn?'S':'D',t:H[j].t,top:H[j].h,bot:H[j].l,imb,key,k})}
 return out.sort((x,y)=>y.t-x.t)}
-const zonesFor=hi=>{if(!zc.has(hi))zc.set(hi,findZones(hi));return zc.get(hi)};
+/* ---- SNR (Key Level) HTF: cluster swing -> area support/resistance, peran flip mengikuti posisi harga ---- */
+function findSNR(hi){const out=[];if(hi<40)return out;const a=XH.atr(14)[hi],pv=[];
+for(let i=Math.max(2,hi-CONFIG.ZONE_LOOK*2);i<=hi-2;i++){const b=H[i];if(b.h>H[i-1].h&&b.h>H[i-2].h&&b.h>H[i+1].h&&b.h>H[i+2].h)pv.push({p:b.h,t:b.t});if(b.l<H[i-1].l&&b.l<H[i-2].l&&b.l<H[i+1].l&&b.l<H[i+2].l)pv.push({p:b.l,t:b.t})}
+const cl=[];pv.forEach(q=>{const c=cl.find(c=>Math.abs(c.p-q.p)<=a*.6);if(c){c.lo=Math.min(c.lo,q.p);c.hi=Math.max(c.hi,q.p);c.p=(c.p*c.n+q.p)/(c.n+1);c.n++;c.t=Math.min(c.t,q.t)}else cl.push({p:q.p,lo:q.p,hi:q.p,n:1,t:q.t})});
+cl.filter(c=>c.n>=2).forEach(c=>{let top=c.hi+.15*a,bot=c.lo-.15*a;if(top-bot<.5*a){const m=(top+bot)/2;top=m+.25*a;bot=m-.25*a}out.push({id:'N'+Math.round(c.p),kind:'SNR',type:'N',t:c.t,top,bot,n:c.n})});
+const px=H[hi].c;return out.sort((x,y)=>Math.abs(px-(x.top+x.bot)/2)-Math.abs(px-(y.top+y.bot)/2)).slice(0,6)}
+const zonesFor=hi=>{if(!zc.has(hi)){const ob=findZones(hi).map(z=>({...z,kind:'OB',grade:'OB'})),keep=[];findSNR(hi).forEach(sn=>{const ov=ob.filter(z=>z.bot<=sn.top&&z.top>=sn.bot);if(ov.length)ov.forEach(z=>z.grade='A+');else keep.push({...sn,grade:'SNR'})});zc.set(hi,[...ob,...keep])}return zc.get(hi)};
 const usable=(A,z)=>{const s=A.zst[z.id];return !s||(s.e<CONFIG.MAX_ENTRY&&s.s<2)};
 const zs=(A,id)=>A.zst[id]||(A.zst[id]={e:0,s:0});
-function broken(z,i,hi,dir){const tS=H[hi].t+SEC[htf];for(let m=i;m>=0&&D[m].t>=tS;m--)if(dir<0?D[m].c>z.key:D[m].c<z.key)return true;return false}
-/* ---- Konfirmasi LTF: masuk zona -> Choch -> OB LTF -> Limit ---- */
+function broken(z,i,hi,dir){if(z.kind!='OB')return false;const tS=H[hi].t+SEC[htf];for(let m=i;m>=0&&D[m].t>=tS;m--)if(dir<0?D[m].c>z.key:D[m].c<z.key)return true;return false}
+const gm=g=>g=='A+'?1:CONFIG.SINGLE_RISK;
+const lotFor=(A,entry,sl,g)=>Math.max(.01,Math.floor(A.bal*CONFIG.RISK_PCT*gm(g)/100/(Math.abs(entry-sl)*100)*100)/100);
+function htfSwing(hi,dir,entry){let best=null;for(let k=Math.max(2,hi-120);k<=hi-2;k++){const b=H[k];if(dir<0){if(b.l<H[k-1].l&&b.l<H[k-2].l&&b.l<H[k+1].l&&b.l<H[k+2].l&&b.l<entry&&(best==null||b.l>best))best=b.l}else if(b.h>H[k-1].h&&b.h>H[k-2].h&&b.h>H[k+1].h&&b.h>H[k+2].h&&b.h>entry&&(best==null||b.h<best))best=b.h}return best}
+/* ---- Trigger A: masuk area OB -> Choch -> OB LTF -> Limit ---- */
+function engineA(A,i,hi,z,dir,R,make){const hn=NM[htf],zn=(dir>0?'Demand':'Supply')+' OB '+hn+' '+f2(z.bot)+'-'+f2(z.top)+(z.grade=='A+'?' [A+]':'');let hx=-1,hv=dir<0?-1e9:1e9;
+for(let m=i;m>=Math.max(1,i-120);m--){if(D[m].t<z.t+SEC[htf])break;const inZ=dir<0?D[m].h>=z.bot:D[m].l<=z.top;if(inZ&&(dir<0?D[m].h>hv:D[m].l<hv)){hv=dir<0?D[m].h:D[m].l;hx=m}}
+if(hx<0){if(R.stage=='-')R.stage='WAIT_ZONE';R.why.push('[A] Menunggu harga masuk '+zn);return 0}
+if(dir<0?hv>z.key:hv<z.key)return 0;
+let ms=null;for(let p=hx-3;p>=Math.max(2,hx-60);p--){const b=D[p];if(dir<0?(b.l<D[p-1].l&&b.l<D[p-2].l&&b.l<D[p+1].l&&b.l<D[p+2].l):(b.h>D[p-1].h&&b.h>D[p-2].h&&b.h>D[p+1].h&&b.h>D[p+2].h)){ms={p,v:dir<0?b.l:b.h};break}}
+if(!ms){R.stage='IN_ZONE';R.why.push('[A] Harga di '+zn+', struktur minor belum terbentuk');return 0}
+let c=-1;for(let m=hx+1;m<=i;m++){if(dir<0?D[m].c<ms.v:D[m].c>ms.v){c=m;break}}
+if(c<0){R.stage='IN_ZONE';R.why.push('[A] Harga di '+zn+': menunggu Choch (close '+(dir<0?'di bawah ':'di atas ')+f2(ms.v)+')');return 0}
+const slp=dir<0?hv+CONFIG.SL_BUFFER:hv-CONFIG.SL_BUFFER;let bad=0;for(let m=c;m<=i;m++)if(dir<0?D[m].c>slp:D[m].c<slp){bad=1;break}
+if(bad){R.why.push('[A] Setup gagal: harga menembus swing '+(dir<0?'high':'low')+' setelah Choch');return 0}
+let j=hx;const rq=q=>dir<0?D[q].c>D[q].o:D[q].c<D[q].o;while(j>hx-5&&j>0&&!rq(j))j--;if(!rq(j))return 0;
+const px=D[i].c,entry=D[j].o,risk=Math.abs(entry-slp);if(risk<CONFIG.MIN_RISK||risk>CONFIG.MAX_RISK||(dir<0?entry<=px:entry>=px)){R.why.push('[A] Choch terdeteksi, level entry tidak valid (risiko di luar batas / harga sudah melewati OB)');return 0}
+const sid=z.id+':'+D[hx].t,tp=entry+dir*risk*CONFIG.RR,type=dir<0?'SELL LIMIT':'BUY LIMIT';
+if(A.used.includes(sid)){R.sig=dir<0?'SELL':'BUY';R.stage='USED';R.why.push('[A] Setup '+zn+' sudah dipakai (Choch '+(i-c)+' candle lalu)');return 1}
+if(i-c>2){R.why.push('[A] Choch '+(i-c)+' candle lalu sudah lewat, menunggu setup baru');return 0}
+R.sig=dir<0?'SELL':'BUY';R.stage='CHOCH';R.why.push('[A] Harga masuk '+zn,'[A] Choch terkonfirmasi (close '+(dir<0?'di bawah ':'di atas ')+f2(ms.v)+')',`[A] OB LTF: ${type} ${f2(entry)} | SL ${f2(slp)} | TP ${f2(tp)} (RR 1:${CONFIG.RR})`);
+if(make){if(A.pos)R.why.push('Posisi masih terbuka: TIDAK membuka posisi baru');else if(!A.pend.length){const o={type,dir,entry,sl:slp,tp,src:zn,zid:z.id,gr:z.grade,sid,key:z.key,t:D[i].t,exp:D[i].t+CONFIG.PEND_BARS*SEC[ltf],info:{sh:{p:hv,t:D[hx].t},ms:{p:ms.v,t0:D[ms.p].t,t1:D[c].t},ob:{top:dir<0?D[j].h:D[j].o,bot:dir<0?D[j].o:D[j].l,t:D[j].t},z:{kind:z.kind,type:z.type,top:z.top,bot:z.bot,t:z.t}}};A.pend.push(o);A.used.push(sid);if(A.used.length>300)A.used.shift();nt(A,'Pending order dibuat - '+type,`Entry ${f2(entry)} | TP ${f2(tp)} | SL ${f2(slp)} | ${zn} | RR 1:${CONFIG.RR}`)}}
+return 1}
+/* ---- Trigger B: area SNR/OB -> Engulfing + candle momentum -> entry market ---- */
+function engineB(A,i,hi,z,dir,R,make){const a=X.atr(14)[i],e=i-1,hn=NM[htf],zn=(z.kind=='OB'?(dir>0?'Demand OB ':'Supply OB '):'SNR ')+hn+' '+f2(z.bot)+'-'+f2(z.top)+(z.grade=='A+'?' [A+]':'');
+if(e<12||!(a>0))return 0;const c0=D[e-1],c1=D[e],c2=D[i];
+const touch=dir<0?c1.h>=z.bot&&c1.h<=z.top+1.5*a:c1.l<=z.top&&c1.l>=z.bot-1.5*a;
+if(!touch){if(R.stage=='-')R.stage='WAIT_ZONE';R.why.push('[B] Menunggu harga menyentuh area '+zn);return 0}
+const eng=dir<0?(c1.c<c1.o&&c0.c>c0.o&&c1.o>=c0.c&&c1.c<=c0.o):(c1.c>c1.o&&c0.c<c0.o&&c1.o<=c0.c&&c1.c>=c0.o);
+if(!eng){R.stage='IN_ZONE';R.why.push('[B] Di area '+zn+': menunggu '+(dir<0?'Bearish':'Bullish')+' Engulfing');return 0}
+if(c1.h-c1.l>CONFIG.SPIKE_ATR*a||c2.h-c2.l>CONFIG.SPIKE_ATR*a){R.why.push('[B] Engulfing DIABAIKAN: candle spike (> '+CONFIG.SPIKE_ATR+'x ATR)');return 0}
+const mo=dir<0?(c2.c<c2.o&&c2.c<c1.c&&c2.o-c2.c>=CONFIG.MOMENTUM_ATR*a):(c2.c>c2.o&&c2.c>c1.c&&c2.c-c2.o>=CONFIG.MOMENTUM_ATR*a);
+if(!mo){R.stage='IN_ZONE';R.why.push('[B] Engulfing terdeteksi, menunggu candle momentum '+(dir<0?'merah':'hijau')+' sebagai konfirmasi');return 0}
+let sh=dir<0?-1e9:1e9;for(let k=e-6;k<=i;k++)sh=dir<0?Math.max(sh,D[k].h):Math.min(sh,D[k].l);
+const entry=c2.c,slp=dir<0?sh+a*CONFIG.ATR_SL+CONFIG.SPREAD:sh-a*CONFIG.ATR_SL,risk=Math.abs(slp-entry);
+if(risk<CONFIG.MIN_RISK||risk>CONFIG.MAX_RISK){R.why.push('[B] Konfirmasi ada, tetapi jarak SL '+f2(risk)+' di luar batas');return 0}
+let tp=entry+dir*risk*CONFIG.RR_B,cap='';
+if(CONFIG.TP_MODE=='conservative'){const sw=htfSwing(hi,dir,entry);if(sw!=null){const rr=Math.abs(sw-entry)/risk;if(rr<CONFIG.RR_MIN_B){R.why.push('[B] TP dibatasi swing '+hn+' (RR '+rr.toFixed(1)+') terlalu kecil, dilewati');return 0}if(dir<0?sw>tp:sw<tp){tp=sw;cap=' (dibatasi swing '+hn+')'}}}
+const sid=z.id+':B:'+c1.t;
+if(A.used.includes(sid)){R.sig=dir<0?'SELL':'BUY';R.stage='USED';R.why.push('[B] Setup sudah dipakai');return 1}
+R.sig=dir<0?'SELL':'BUY';R.stage='CHOCH';R.why.push('[B] Harga di area '+zn,'[B] '+(dir<0?'Bearish':'Bullish')+' Engulfing + candle momentum terkonfirmasi',`[B] Entry market ${f2(entry)} | SL ${f2(slp)} | TP ${f2(tp)}${cap}`);
+if(make){if(A.pos)R.why.push('Posisi masih terbuka: TIDAK membuka posisi baru');else{A.pend=[];const lot=lotFor(A,entry,slp,z.grade);A.pos={dir,entry,sl:slp,tp,lot,i,t:D[i].t,via:'ENGULFING',zid:z.id,gr:z.grade,info:{eg:{t:c1.t,dir},z:{kind:z.kind,type:z.type,top:z.top,bot:z.bot,t:z.t}}};A.used.push(sid);if(A.used.length>300)A.used.shift();zs(A,z.id).e++;nt(A,(dir<0?'SELL':'BUY')+' dibuka (Engulfing) - XAU/USD',`Entry ${f2(entry)} | TP ${f2(tp)} | SL ${f2(slp)} | ${lot} lot | ${zn}`)}}
+return 1}
+/* ---- Pemindai hybrid ---- */
 function scan(A,i,hi,make){const R={sig:'WAIT',why:[],dir:0,stage:'-'};
 if(hi<210||i<60){R.why.push('Data belum cukup (butuh minimal 210 candle HTF)');return R}
 const dir=trend(hi),F=CONFIG.EMA_FAST,S=CONFIG.EMA_SLOW,hn=NM[htf];R.dir=dir;
 if(!dir){R.why.push('Tren '+hn+' sideways - tidak trading');return R}
-R.why.push(`Tren ${hn} ${dir>0?'NAIK':'TURUN'} (EMA${F} ${dir>0?'di atas':'di bawah'} EMA${S}): fokus ${dir>0?'Demand OB, hanya BUY':'Supply OB, hanya SELL'}`);
-const el=zonesFor(hi).filter(z=>z.type==(dir>0?'D':'S')&&usable(A,z)&&!broken(z,i,hi,dir));
-if(!el.length){R.why.push('Belum ada zona OB '+(dir>0?'Demand':'Supply')+' valid di '+hn+' (sisa entri/break key level)');return R}
-const px=D[i].c;el.sort((a,b)=>Math.abs(px-(a.top+a.bot)/2)-Math.abs(px-(b.top+b.bot)/2));
-for(const z of el){const zn=(dir>0?'Demand':'Supply')+' OB '+hn+' '+f2(z.bot)+'-'+f2(z.top);let hx=-1,hv=dir<0?-1e9:1e9;
-for(let m=i;m>=Math.max(1,i-120);m--){if(D[m].t<z.t+SEC[htf])break;const inZ=dir<0?D[m].h>=z.bot:D[m].l<=z.top;if(inZ&&(dir<0?D[m].h>hv:D[m].l<hv)){hv=dir<0?D[m].h:D[m].l;hx=m}}
-if(hx<0){if(R.stage=='-')R.stage='WAIT_ZONE';R.why.push('Menunggu harga masuk '+zn);continue}
-if(dir<0?hv>z.key:hv<z.key)continue;
-let ms=null;for(let p=hx-3;p>=Math.max(2,hx-60);p--){const b=D[p];if(dir<0?(b.l<D[p-1].l&&b.l<D[p-2].l&&b.l<D[p+1].l&&b.l<D[p+2].l):(b.h>D[p-1].h&&b.h>D[p-2].h&&b.h>D[p+1].h&&b.h>D[p+2].h)){ms={p,v:dir<0?b.l:b.h};break}}
-if(!ms){R.stage='IN_ZONE';R.why.push('Harga di '+zn+', struktur minor belum terbentuk');continue}
-let c=-1;for(let m=hx+1;m<=i;m++){if(dir<0?D[m].c<ms.v:D[m].c>ms.v){c=m;break}}
-if(c<0){R.stage='IN_ZONE';R.why.push('Harga di '+zn+': menunggu Choch (close '+(dir<0?'di bawah ':'di atas ')+f2(ms.v)+')');continue}
-const slp=dir<0?hv+CONFIG.SL_BUFFER:hv-CONFIG.SL_BUFFER;let bad=0;for(let m=c;m<=i;m++)if(dir<0?D[m].c>slp:D[m].c<slp){bad=1;break}
-if(bad){R.why.push('Setup gagal: harga menembus swing '+(dir<0?'high':'low')+' setelah Choch');continue}
-let j=hx;const rq=q=>dir<0?D[q].c>D[q].o:D[q].c<D[q].o;while(j>hx-5&&j>0&&!rq(j))j--;if(!rq(j))continue;
-const entry=D[j].o,risk=Math.abs(entry-slp);if(risk<CONFIG.MIN_RISK||(dir<0?entry<=px:entry>=px)){R.why.push('Choch terdeteksi, tetapi level entry tidak valid (risiko terlalu kecil / harga sudah melewati OB)');continue}
-const sid=z.id+':'+D[hx].t,tp=entry+dir*risk*CONFIG.RR,type=dir<0?'SELL LIMIT':'BUY LIMIT';
-if(A.used.includes(sid)){R.sig=dir<0?'SELL':'BUY';R.stage='USED';R.why.push('Setup '+zn+' sudah dipakai (Choch '+(i-c)+' candle lalu)');break}
-if(i-c>2){R.why.push('Choch '+(i-c)+' candle lalu sudah lewat, menunggu setup baru');continue}
-R.sig=dir<0?'SELL':'BUY';R.stage='CHOCH';R.why.push('Harga masuk '+zn,'Choch terkonfirmasi (close '+(dir<0?'di bawah ':'di atas ')+f2(ms.v)+')',`OB LTF: ${type} ${f2(entry)} | SL ${f2(slp)} | TP ${f2(tp)} (RR 1:${CONFIG.RR})`);
-if(make){if(A.pos)R.why.push('Posisi masih terbuka: TIDAK membuka posisi baru');else if(!A.pend.length){const o={type,dir,entry,sl:slp,tp,src:zn,zid:z.id,sid,key:z.key,t:D[i].t,exp:D[i].t+CONFIG.PEND_BARS*SEC[ltf],info:{sh:{p:hv,t:D[hx].t},ms:{p:ms.v,t0:D[ms.p].t,t1:D[c].t},ob:{top:dir<0?D[j].h:D[j].o,bot:dir<0?D[j].o:D[j].l,t:D[j].t},z:{type:z.type,top:z.top,bot:z.bot,t:z.t}}};A.pend.push(o);A.used.push(sid);if(A.used.length>300)A.used.shift();nt(A,'Pending order dibuat - '+type,`Entry ${f2(entry)} | TP ${f2(tp)} | SL ${f2(slp)} | ${zn} | RR 1:${CONFIG.RR}`)}}
-break}
+R.why.push(`Tren ${hn} ${dir>0?'NAIK':'TURUN'} (EMA${F} ${dir>0?'di atas':'di bawah'} EMA${S}): fokus ${dir>0?'Demand/Support, hanya BUY':'Supply/Resistance, hanya SELL'}`);
+if(A.pauseUntil&&D[i].t<A.pauseUntil){R.why.push('Jeda: '+CONFIG.LOSS_PAUSE+'x SL beruntun, menunggu candle '+hn+' berikutnya');make=false}
+const px=D[i].c,aL=X.atr(14)[i];
+const el=zonesFor(hi).filter(z=>usable(A,z)&&(z.kind=='OB'?(z.type==(dir>0?'D':'S')&&!broken(z,i,hi,dir)):(dir<0?px<=z.top+.5*aL:px>=z.bot-.5*aL)));
+if(!el.length){R.why.push('Belum ada area valid (OB / SNR) di '+hn+' untuk arah ini');return R}
+el.sort((a,b)=>Math.abs(px-(a.top+a.bot)/2)-Math.abs(px-(b.top+b.bot)/2));
+for(const z of el.slice(0,3)){let done=0;if(z.kind=='OB')done=engineA(A,i,hi,z,dir,R,make);if(!done&&z.grade!='OB')done=engineB(A,i,hi,z,dir,R,make);if(done)break}
 return R}
 function managePend(A,i,hi){const tr=trend(hi);A.pend=A.pend.filter(o=>{let w=null;if(D[i].t>=o.exp)w='kedaluwarsa';else if(o.dir<0?D[i].c>o.sl:D[i].c<o.sl)w='harga menembus SL sebelum entry terisi';else if(tr!==o.dir)w='tren HTF berubah';else if(o.dir<0?D[i].c>o.key:D[i].c<o.key)w='harga break key level';if(w){nt(A,'Pending dibatalkan - '+o.type,f2(o.entry)+': '+w);return false}return true})}
 const cycle=(A,i,hi)=>{managePend(A,i,hi);scan(A,i,hi,true)};
 /* ============ 3. MESIN AKUN (paper trading) ============ */
 const nt=(A,t,b)=>{if(A.live&&!quiet)notify(t,b)};
 function manage(A,h,l,j){const p=A.pos;if(!p)return;if(p.dir>0){if(l<=p.sl)closeP(A,p.sl,'SL',j);else if(h>=p.tp)closeP(A,p.tp,'TP',j)}else{if(h>=p.sl)closeP(A,p.sl,'SL',j);else if(l<=p.tp)closeP(A,p.tp,'TP',j)}}
-function closeP(A,px,why,j){const p=A.pos,pnl=(px-p.entry)*p.dir*100*p.lot;A.bal+=pnl;A.trades.push({...p,exit:px,pnl,why,j,tj:D[j].t});A.pos=null;if(why=='SL'&&p.zid)zs(A,p.zid).s++;
+function closeP(A,px,why,j){const p=A.pos,pnl=(px-p.entry)*p.dir*100*p.lot;A.bal+=pnl;A.trades.push({...p,exit:px,pnl,why,j,tj:D[j].t});A.pos=null;if(why=='SL'&&p.zid)zs(A,p.zid).s++;A.cl=why=='SL'?(A.cl||0)+1:0;if(A.cl>=CONFIG.LOSS_PAUSE){A.cl=0;A.pauseUntil=D[j].t+SEC[htf];nt(A,'Jeda trading',CONFIG.LOSS_PAUSE+'x SL beruntun. Robot berhenti membuat setup baru sampai candle '+NM[htf]+' berikutnya.')}
 nt(A,(why=='TP'?'Take Profit tersentuh':why=='SL'?'Stop Loss tersentuh':'Posisi ditutup ('+why+')')+' - XAU/USD',`${p.dir>0?'BUY':'SELL'} ${f2(p.entry)} -> ${f2(px)} | ${pnl>=0?'+':'-'}$${f2(Math.abs(pnl))} | Balance $${f2(A.bal)}`)}
 function fillPend(A,h,l,j){const o=A.pend[0];if(!o||A.pos||D[j].t<=o.t)return 0;if(!(o.dir>0?l<=o.entry:h>=o.entry))return 0;
-const lot=Math.max(.01,Math.floor(A.bal*CONFIG.RISK_PCT/100/(Math.abs(o.entry-o.sl)*100)*100)/100);A.pos={dir:o.dir,entry:o.entry,sl:o.sl,tp:o.tp,lot,i:j,t:D[j].t,via:o.type,zid:o.zid,info:o.info};A.pend=[];zs(A,o.zid).e++;
+const lot=lotFor(A,o.entry,o.sl,o.gr);A.pos={dir:o.dir,entry:o.entry,sl:o.sl,tp:o.tp,lot,i:j,t:D[j].t,via:o.type,zid:o.zid,gr:o.gr,info:o.info};A.pend=[];zs(A,o.zid).e++;
 nt(A,o.type+' terisi - XAU/USD',`Entry ${f2(o.entry)} | TP ${f2(o.tp)} | SL ${f2(o.sl)} | ${lot} lot`);return 1}
 function step(A,h,l,j){manage(A,h,l,j);if(!A.pos&&fillPend(A,h,l,j))manage(A,h,l,j)}
 function stats(A){const t=A.trades,w=t.filter(x=>x.pnl>0),gw=w.reduce((a,x)=>a+x.pnl,0),gl=-t.filter(x=>x.pnl<=0).reduce((a,x)=>a+x.pnl,0);let e=A.b0,pk=e,dd=0;t.forEach(x=>{e+=x.pnl;pk=Math.max(pk,e);dd=Math.max(dd,(pk-e)/pk*100)});return{n:t.length,wr:t.length?w.length/t.length*100:0,pf:gl?gw/gl:gw?99:0,dd,net:A.bal-A.b0}}
 const eq=A=>A.bal+(A.pos?(D[D.length-1].c-A.pos.entry)*A.pos.dir*100*A.pos.lot:0);
 function backtest(){const B=mkA();for(let i=60;i<D.length;i++){const hi=hIdxAt(D[i].t+SEC[ltf]);step(B,D[i].h,D[i].l,i);if(hi>=210)cycle(B,i,hi)}if(B.pos)closeP(B,D[D.length-1].c,'End',D.length-1);const s=stats(B),zu=Object.keys(B.zst).length;
-$('#btr').innerHTML=`<div class="kv"><div><small>Trade</small><b>${s.n}</b></div><div><small>Win rate</small><b>${s.wr.toFixed(0)}%</b></div><div><small>Profit factor</small><b>${s.pf.toFixed(2)}</b></div><div><small>Net P/L</small><b class="${s.net>=0?'up':'dn'}">${s.net>=0?'+':''}$${f2(s.net)}</b></div><div><small>Max drawdown</small><b>${s.dd.toFixed(1)}%</b></div><div><small>Zona terpakai</small><b>${zu}</b></div></div><small>Diuji pada ${D.length} candle ${NM[ltf]} terakhir.</small>`}
+$('#btr').innerHTML=`<div class="kv"><div><small>Trade</small><b>${s.n}</b></div><div><small>Win rate</small><b>${s.wr.toFixed(0)}%</b></div><div><small>Profit factor</small><b>${s.pf.toFixed(2)}</b></div><div><small>Net P/L</small><b class="${s.net>=0?'up':'dn'}">${s.net>=0?'+':''}$${f2(s.net)}</b></div><div><small>Max drawdown</small><b>${s.dd.toFixed(1)}%</b></div><div><small>Zona terpakai</small><b>${zu}</b></div><div><small>Trigger A (Choch)</small><b>${B.trades.filter(t=>t.via&&t.via!='ENGULFING').length}</b></div><div><small>Trigger B (Engulf)</small><b>${B.trades.filter(t=>t.via=='ENGULFING').length}</b></div></div><small>Diuji pada ${D.length} candle ${NM[ltf]} terakhir.</small>`}
 /* ---- notifikasi, penyimpanan, resume ---- */
 function toast(t,b){const e=$('#toast');e.innerHTML='<b>'+t+'</b><br>'+b;e.style.display='block';clearTimeout(toast.h);toast.h=setTimeout(()=>e.style.display='none',8000)}
 async function notify(t,b){try{toast(t,b)}catch(e){}if(!('Notification' in window)||Notification.permission!='granted')return;try{const r=await navigator.serviceWorker.getRegistration(),o={body:b,icon:'icon-192.png',badge:'icon-192.png',tag:'gold-'+Date.now(),vibrate:[300,120,300,120,300],requireInteraction:true};if(r)r.showNotification(t,o);else new Notification(t,o)}catch(e){}}
 const sk=()=>'gold_state_'+pair;
-function save(){try{localStorage.setItem(sk(),JSON.stringify({botOn,bal:A.bal,b0:A.b0,lastT:A.lastT,pos:A.pos,pend:A.pend,zst:A.zst,used:A.used,trades:A.trades.slice(-200)}))}catch(e){}}
+function save(){try{localStorage.setItem(sk(),JSON.stringify({botOn,bal:A.bal,b0:A.b0,lastT:A.lastT,cl:A.cl,pauseUntil:A.pauseUntil,pos:A.pos,pend:A.pend,zst:A.zst,used:A.used,trades:A.trades.slice(-200)}))}catch(e){}}
 function catchUp(){quiet=1;const n0=A.trades.length,u0=A.used.length,from=A.lastT||D[D.length-2].t;for(let i=0;i<D.length-1;i++){if(D[i].t<=from)continue;step(A,D[i].h,D[i].l,i);const hi=hIdxAt(D[i].t+SEC[ltf]);if(hi>=210)cycle(A,i,hi);A.lastT=D[i].t}quiet=0;const dn=A.trades.length-n0,no=A.used.length-u0;if(dn||no)notify('Gold Robot aktif lagi',`Selama aplikasi tertutup: ${no} setup, ${dn} trade selesai`)}
-function restore(){let S=null;try{S=JSON.parse(localStorage.getItem(sk())||'null')}catch(e){}if(!S)return;A=Object.assign(mkA(1),{bal:S.bal,b0:S.b0,lastT:S.lastT,pos:S.pos,pend:S.pend||[],zst:S.zst||{},used:S.used||[],trades:S.trades||[]});const ix=t=>D.findIndex(d=>d.t==t);if(A.pos)A.pos.i=ix(A.pos.t);A.trades.forEach(t=>{t.i=ix(t.t);t.j=ix(t.tj)});if(S.botOn){botOn=1;catchUp()}}
+function restore(){let S=null;try{S=JSON.parse(localStorage.getItem(sk())||'null')}catch(e){}if(!S)return;A=Object.assign(mkA(1),{bal:S.bal,b0:S.b0,lastT:S.lastT,cl:S.cl,pauseUntil:S.pauseUntil,pos:S.pos,pend:S.pend||[],zst:S.zst||{},used:S.used||[],trades:S.trades||[]});const ix=t=>D.findIndex(d=>d.t==t);if(A.pos)A.pos.i=ix(A.pos.t);A.trades.forEach(t=>{t.i=ix(t.t);t.j=ix(t.tj)});if(S.botOn){botOn=1;catchUp()}}
 /* ---- data TwelveData (HTF + LTF) ---- */
 const goldOpen=()=>{const d=new Date(),w=d.getUTCDay(),h=d.getUTCHours();return !(w==6||(w==5&&h>=22)||(w==0&&h<22))};
 const td=v=>{const s=v.datetime.replace(' ','T');return{t:Date.parse((s.length<=10?s+'T00:00:00':s)+'Z')/1000,o:+v.open,h:+v.high,l:+v.low,c:+v.close}};
@@ -185,7 +232,7 @@ const V={s:0,bw:8,z:1},PRW=58,cw=()=>Math.max(50,$('#cv').getBoundingClientRect(
 function resetView(){V.bw=Math.max(4,Math.min(14,cw()/80));V.s=D.length-cw()/V.bw+5;dirty=1}
 function clampV(){if(!(V.bw>=2))V.bw=8;V.bw=Math.min(40,V.bw);const w=cw()/V.bw;if(!isFinite(V.s))V.s=D.length-w+5;V.s=Math.max(-w*.7,Math.min(D.length-3,V.s))}
 function zoomAt(px,f){const i=(px-V.bw/2)/V.bw+V.s;V.bw=Math.min(40,Math.max(2,V.bw*f));V.s=i-(px-V.bw/2)/V.bw;clampV();dirty=1}
-const chartZones=()=>{const hi=lastH();if(hi<210)return[];const dir=trend(hi);return zonesFor(hi).filter(z=>z.type==(dir>0?'D':'S')&&usable(A,z)&&!broken(z,D.length-2,hi,dir)).slice(0,4)};
+const chartZones=()=>{const hi=lastH();if(hi<210)return[];const dir=trend(hi),px=D[D.length-1].c,aL=X.atr(14)[D.length-1];return zonesFor(hi).filter(z=>usable(A,z)&&(z.kind=='OB'?(z.type==(dir>0?'D':'S')&&!broken(z,D.length-2,hi,dir)):(dir<0?px<=z.top+.5*aL:px>=z.bot-.5*aL))).slice(0,5)};
 function draw(){dirty=0;if(!D.length){fit($('#cv'));return}clampV();
 const cs=getComputedStyle(document.documentElement),g=n=>cs.getPropertyValue(n).trim(),UP=g('--up'),DN=g('--dn'),GR=g('--bd'),MU=g('--mu'),TX=g('--tx'),m=fit($('#cv')),x=m.x,PR=PRW,W=m.w-PR,bw=V.bw,h=m.h,i0=Math.max(0,Math.floor(V.s)),i1=Math.min(D.length-1,Math.ceil(V.s+W/bw)),p=A.pos,PD=!p?A.pend:[],S=(p||PD[0]||{}).info,P=p||PD[0];
 let lo=1e9,hi=-1e9;for(let i=i0;i<=i1;i++){lo=Math.min(lo,D[i].l);hi=Math.max(hi,D[i].h)}if(lo>hi){lo=D[D.length-1].l;hi=D[D.length-1].h}
@@ -193,18 +240,20 @@ if(P&&i1>=D.length-2){lo=Math.min(lo,P.sl,P.tp,P.entry);hi=Math.max(hi,P.sl,P.tp
 const XX=i=>(i-V.s)*bw+bw/2,Y=v=>12+(hi-v)/(hi-lo)*(h-24),bx=t=>Math.max(-5,XX(tIdx(t))-bw/2);x.font='11px system-ui';
 for(let k=0;k<=5;k++){const v=lo+(hi-lo)*k/5,y=Math.round(Y(v))+.5;x.strokeStyle=GR;x.beginPath();x.moveTo(0,y);x.lineTo(W,y);x.stroke();x.fillStyle=MU;x.fillText(f2(v),W+6,y+4)}
 x.save();x.beginPath();x.rect(0,0,W,h);x.clip();
-if(V.z){chartZones().forEach(z=>{const x0=bx(z.t),y0=Y(z.top),y1=Y(z.bot),c=z.type=='S'?DN:UP;if(x0>W)return;
-x.fillStyle=c+'26';x.fillRect(x0,y0,W-x0,Math.max(2,y1-y0));x.strokeStyle=c+'aa';x.strokeRect(x0+.5,y0+.5,W-x0,Math.max(2,y1-y0));x.fillStyle=c;x.fillText((z.type=='S'?'Supply OB ':'Demand OB ')+NM[htf],Math.max(4,x0+4),y0+12);
+if(V.z){const px0=D[D.length-1].c;chartZones().forEach(z=>{const x0=bx(z.t),y0=Y(z.top),y1=Y(z.bot);if(x0>W)return;
+if(z.kind=='SNR'){const role=px0>z.top?'Support':px0<z.bot?'Resistance':'Key Level';x.fillStyle='rgba(103,232,249,.24)';x.fillRect(x0,y0,W-x0,Math.max(2,y1-y0));x.strokeStyle='rgba(103,232,249,.75)';x.strokeRect(x0+.5,y0+.5,W-x0,Math.max(2,y1-y0));x.fillStyle=TX;x.fillText(role+' '+NM[htf]+' (SNR)',Math.max(4,x0+4),y0+12);return}
+const c=z.type=='S'?DN:UP;x.fillStyle=c+'26';x.fillRect(x0,y0,W-x0,Math.max(2,y1-y0));x.strokeStyle=c+'aa';x.strokeRect(x0+.5,y0+.5,W-x0,Math.max(2,y1-y0));x.fillStyle=c;x.fillText((z.type=='S'?'Supply OB ':'Demand OB ')+NM[htf]+(z.grade=='A+'?' + SNR (A+)':''),Math.max(4,x0+4),y0+12);
 if(z.imb){const xi=bx(z.imb.t),a=Y(z.imb.top),b=Y(z.imb.bot);x.fillStyle='rgba(140,150,170,.32)';x.fillRect(xi,a,Math.max(40,(W-xi)*.5),Math.max(2,b-a));x.fillStyle=TX;x.fillText('Imb',xi+4,a+11)}
 const ky=Y(z.key);x.strokeStyle='#b388ff';x.setLineDash([2,4]);x.beginPath();x.moveTo(x0,ky);x.lineTo(W,ky);x.stroke();x.setLineDash([]);x.fillStyle='#b388ff';x.textAlign='right';x.fillText('Key Level '+f2(z.key),W-4,ky-3);x.textAlign='left'})}
-if(V.z&&S){const ob=S.ob,xo=bx(ob.t),xa=XX(tIdx(S.ms.t0)),xb=XX(tIdx(S.ms.t1)),ym=Y(S.ms.p);x.fillStyle='rgba(45,212,191,.28)';x.fillRect(xo,Y(ob.top),W-xo,Math.max(2,Y(ob.bot)-Y(ob.top)));x.fillStyle=TX;x.fillText('OB Low TF',Math.max(4,xo+4),Y(ob.top)-3);
+if(V.z&&S&&S.ob){const ob=S.ob,xo=bx(ob.t),xa=XX(tIdx(S.ms.t0)),xb=XX(tIdx(S.ms.t1)),ym=Y(S.ms.p);x.fillStyle='rgba(45,212,191,.28)';x.fillRect(xo,Y(ob.top),W-xo,Math.max(2,Y(ob.bot)-Y(ob.top)));x.fillStyle=TX;x.fillText('OB Low TF',Math.max(4,xo+4),Y(ob.top)-3);
 x.strokeStyle=TX;x.lineWidth=1.4;x.beginPath();x.moveTo(xa,ym);x.lineTo(xb+bw,ym);x.stroke();x.lineWidth=1;x.fillStyle=TX;x.fillText('Choch',xa,ym+(P&&P.dir<0?13:-4))}
+if(V.z&&S&&S.eg){const k=tIdx(S.eg.t),xx=XX(k),d=D[Math.min(k,D.length-1)];x.strokeStyle='#e040fb';x.lineWidth=1.6;x.beginPath();x.arc(xx,Y((d.h+d.l)/2),Math.max(8,bw*1.6),0,6.283);x.stroke();x.lineWidth=1;x.fillStyle='#e040fb';x.fillText((S.eg.dir<0?'Bearish':'Bullish')+' Engulfing + Momentum',Math.max(4,xx-40),Y(S.eg.dir<0?d.h:d.l)+(S.eg.dir<0?-14:24))}
 if(P){const x0=Math.max(0,XX(P.i>=0?P.i:i0)-bw/2),yE=Y(P.entry);[[P.tp,UP],[P.sl,DN]].forEach(([v,c])=>{const y=Y(v);x.fillStyle=c+'26';x.fillRect(x0,Math.min(yE,y),W-x0,Math.abs(y-yE))})}
 for(let i=i0;i<=i1;i++){const d=D[i],c=d.c>=d.o?UP:DN,xx=Math.round(XX(i))+.5;x.strokeStyle=x.fillStyle=c;x.beginPath();x.moveTo(xx,Y(d.h));x.lineTo(xx,Y(d.l));x.stroke();x.fillRect(xx-bw*.35,Y(Math.max(d.o,d.c)),Math.max(1,bw*.7),Math.max(1,Math.abs(Y(d.o)-Y(d.c))))}
 [[CONFIG.EMA_FAST,'#f5c542'],[CONFIG.EMA_SLOW,TX]].forEach(([pp,c])=>{const a=X.ema(pp);x.strokeStyle=c;x.lineWidth=1.5;x.beginPath();for(let i=i0;i<=i1;i++)i==i0?x.moveTo(XX(i),Y(a[i])):x.lineTo(XX(i),Y(a[i]));x.stroke();x.lineWidth=1});
 const mk=(i,dir,c)=>{if(i<i0||i>i1)return;const xx=XX(i),y=dir>0?Y(D[i].l)+13:Y(D[i].h)-13;x.fillStyle=c;x.beginPath();x.moveTo(xx,dir>0?y-9:y+9);x.lineTo(xx-6,dir>0?y+3:y-3);x.lineTo(xx+6,dir>0?y+3:y-3);x.fill()};
 A.trades.forEach(t=>mk(t.i,t.dir,t.dir>0?UP:DN));if(p)mk(p.i,p.dir,p.dir>0?UP:DN);
-const lines=P?[[(p?'ENTRY ':'')+(P.via||P.type),P.entry,p?'#4aa3ff':'#f59e0b'],['TP',P.tp,UP],['SL',P.sl,DN]]:[];
+const lines=P?[[(p?'ENTRY ':'')+(P.via||P.type)+(P.gr?' ['+P.gr+']':''),P.entry,p?'#4aa3ff':'#f59e0b'],['TP',P.tp,UP],['SL',P.sl,DN]]:[];
 lines.forEach(([l,v,c],k)=>{x.strokeStyle=x.fillStyle=c;x.lineWidth=1.4;x.setLineDash(p?[6,4]:[3,4]);x.beginPath();x.moveTo(0,Y(v));x.lineTo(W,Y(v));x.stroke();x.setLineDash([]);x.lineWidth=1;x.fillText(l+' '+f2(v),6,Y(v)-4)});
 x.restore();
 lines.forEach(([l,v,c])=>{const y=Y(v);if(y<0||y>h)return;x.fillStyle=c;x.fillRect(W,y-8,PR,16);x.fillStyle='#fff';x.fillText(f2(v),W+5,y+4)});
