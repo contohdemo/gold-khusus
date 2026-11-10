@@ -73,7 +73,12 @@ const CONFIG={
   MAX_RISK:15,        // jarak SL maksimal (USD)
   /* --- Manajemen hybrid --- */
   SINGLE_RISK:0.6,    // area tunggal (OB saja / SNR saja) = 60% dari RISK_PCT; A+ (OB+SNR) = 100%
-  LOSS_PAUSE:2        // jeda setelah N x SL beruntun
+  LOSS_PAUSE:2,       // jeda setelah N x SL beruntun
+  /* --- Pending antisipasi (dipasang saat menunggu momen konfirmasi terakhir) --- */
+  PRE_ORDER:true,     // true = pasang order STOP lebih dulu; false = hanya entry setelah konfirmasi penuh
+  PRE_RISK:0.7,       // lot order antisipasi = 70% dari lot normal (belum konfirmasi penuh)
+  PRE_BUFFER:0.2,     // jarak order STOP dari level konfirmasi (USD)
+  PRE_BARS_B:2        // order antisipasi Engulfing berlaku N candle
 };
 /* Pasangan Timeframe (video): Trend & Zona SnD -> Perkecil & Konfirmasi */
 const PAIRS={'D1-H1':['1day','1h','D1 -> H1'],'H4-M15':['4h','15min','H4 -> M15'],'H1-M5':['1h','5min','H1 -> M5'],'M15-M1':['15min','1min','M15 -> M1']};
@@ -121,8 +126,23 @@ const usable=(A,z)=>{const s=A.zst[z.id];return !s||(s.e<CONFIG.MAX_ENTRY&&s.s<2
 const zs=(A,id)=>A.zst[id]||(A.zst[id]={e:0,s:0});
 function broken(z,i,hi,dir){if(z.kind!='OB')return false;const tS=H[hi].t+SEC[htf];for(let m=i;m>=0&&D[m].t>=tS;m--)if(dir<0?D[m].c>z.key:D[m].c<z.key)return true;return false}
 const gm=g=>g=='A+'?1:CONFIG.SINGLE_RISK;
-const lotFor=(A,entry,sl,g)=>Math.max(.01,Math.floor(A.bal*CONFIG.RISK_PCT*gm(g)/100/(Math.abs(entry-sl)*100)*100)/100);
+const lotFor=(A,entry,sl,g,mul=1)=>Math.max(.01,Math.floor(A.bal*CONFIG.RISK_PCT*gm(g)*mul/100/(Math.abs(entry-sl)*100)*100)/100);
 function htfSwing(hi,dir,entry){let best=null;for(let k=Math.max(2,hi-120);k<=hi-2;k++){const b=H[k];if(dir<0){if(b.l<H[k-1].l&&b.l<H[k-2].l&&b.l<H[k+1].l&&b.l<H[k+2].l&&b.l<entry&&(best==null||b.l>best))best=b.l}else if(b.h>H[k-1].h&&b.h>H[k-2].h&&b.h>H[k+1].h&&b.h>H[k+2].h&&b.h>entry&&(best==null||b.h<best))best=b.h}return best}
+/* ---- Pending antisipasi: order STOP dipasang saat menunggu momen konfirmasi terakhir ---- */
+function armPre(A,o){if(A.pos)return;const cur=A.pend[0];if(cur&&(!cur.pre||cur.sid===o.sid))return;if(A.used.includes(o.sid))return;
+if(cur)nt(A,'Pending antisipasi diganti - '+cur.type,f2(cur.entry)+': setup berubah');A.pend=[o];A.used.push(o.sid);if(A.used.length>300)A.used.shift();
+nt(A,'Pending antisipasi dibuat - '+o.type,`Entry ${f2(o.entry)} | TP ${f2(o.tp)} | SL ${f2(o.sl)} | ${o.src} | lot ${Math.round(CONFIG.PRE_RISK*100)}%`)}
+function armB(A,i,hi,z,dir,R,make){const a=X.atr(14)[i];if(i<12||!(a>0))return 0;const c0=D[i-1],c1=D[i];
+if(!(dir<0?c1.h>=z.bot&&c1.h<=z.top+1.5*a:c1.l<=z.top&&c1.l>=z.bot-1.5*a))return 0;
+if(!(dir<0?(c1.c<c1.o&&c0.c>c0.o&&c1.o>=c0.c&&c1.c<=c0.o):(c1.c>c1.o&&c0.c<c0.o&&c1.o<=c0.c&&c1.c>=c0.o)))return 0;
+if(c1.h-c1.l>CONFIG.SPIKE_ATR*a)return 0;
+let sh=dir<0?-1e9:1e9;for(let k=i-6;k<=i;k++)sh=dir<0?Math.max(sh,D[k].h):Math.min(sh,D[k].l);
+const entry=dir<0?c1.l-CONFIG.PRE_BUFFER:c1.h+CONFIG.PRE_BUFFER,slp=dir<0?sh+a*CONFIG.ATR_SL+CONFIG.SPREAD:sh-a*CONFIG.ATR_SL,risk=Math.abs(slp-entry);if(risk<CONFIG.MIN_RISK||risk>CONFIG.MAX_RISK)return 0;
+let tp=entry+dir*risk*CONFIG.RR_B;if(CONFIG.TP_MODE=='conservative'){const sw=htfSwing(hi,dir,entry);if(sw!=null){const rr=Math.abs(sw-entry)/risk;if(rr<CONFIG.RR_MIN_B)return 0;if(dir<0?sw>tp:sw<tp)tp=sw}}
+const sid=z.id+':PB:'+c1.t,zn=(z.kind=='OB'?(dir>0?'Demand OB ':'Supply OB '):'SNR ')+NM[htf]+' '+f2(z.bot)+'-'+f2(z.top);
+R.stage='ARMED';R.armed=sid;R.why.push('[B] '+(dir<0?'Bearish':'Bullish')+' Engulfing terbentuk, menunggu candle momentum: pending antisipasi '+(dir<0?'SELL':'BUY')+' STOP '+f2(entry)+' (aktif otomatis jika momentum menembus)');
+if(make)armPre(A,{type:dir<0?'SELL STOP':'BUY STOP',dir,entry,sl:slp,tp,src:zn+' - antisipasi momentum',zid:z.id,gr:z.grade,sid,pre:1,t:D[i].t,exp:D[i].t+CONFIG.PRE_BARS_B*SEC[ltf],info:{eg:{t:c1.t,dir},z:{kind:z.kind,type:z.type,top:z.top,bot:z.bot,t:z.t}}});
+return 1}
 /* ---- Trigger A: masuk area OB -> Choch -> OB LTF -> Limit ---- */
 function engineA(A,i,hi,z,dir,R,make){const hn=NM[htf],zn=(dir>0?'Demand':'Supply')+' OB '+hn+' '+f2(z.bot)+'-'+f2(z.top)+(z.grade=='A+'?' [A+]':'');let hx=-1,hv=dir<0?-1e9:1e9;
 for(let m=i;m>=Math.max(1,i-120);m--){if(D[m].t<z.t+SEC[htf])break;const inZ=dir<0?D[m].h>=z.bot:D[m].l<=z.top;if(inZ&&(dir<0?D[m].h>hv:D[m].l<hv)){hv=dir<0?D[m].h:D[m].l;hx=m}}
@@ -131,7 +151,11 @@ if(dir<0?hv>z.key:hv<z.key)return 0;
 let ms=null;for(let p=hx-3;p>=Math.max(2,hx-60);p--){const b=D[p];if(dir<0?(b.l<D[p-1].l&&b.l<D[p-2].l&&b.l<D[p+1].l&&b.l<D[p+2].l):(b.h>D[p-1].h&&b.h>D[p-2].h&&b.h>D[p+1].h&&b.h>D[p+2].h)){ms={p,v:dir<0?b.l:b.h};break}}
 if(!ms){R.stage='IN_ZONE';R.why.push('[A] Harga di '+zn+', struktur minor belum terbentuk');return 0}
 let c=-1;for(let m=hx+1;m<=i;m++){if(dir<0?D[m].c<ms.v:D[m].c>ms.v){c=m;break}}
-if(c<0){R.stage='IN_ZONE';R.why.push('[A] Harga di '+zn+': menunggu Choch (close '+(dir<0?'di bawah ':'di atas ')+f2(ms.v)+')');return 0}
+if(c<0){R.stage='IN_ZONE';R.why.push('[A] Harga di '+zn+': menunggu Choch (close '+(dir<0?'di bawah ':'di atas ')+f2(ms.v)+')');
+if(CONFIG.PRE_ORDER){const entry=ms.v-dir*CONFIG.PRE_BUFFER,slp0=dir<0?hv+CONFIG.SL_BUFFER:hv-CONFIG.SL_BUFFER,risk=Math.abs(entry-slp0);
+if(risk>=CONFIG.MIN_RISK&&risk<=CONFIG.MAX_RISK&&(dir<0?entry<D[i].c:entry>D[i].c)){const sidp=z.id+':P:'+D[hx].t;R.stage='ARMED';R.armed=sidp;R.why.push('[A] Pending antisipasi: '+(dir<0?'SELL':'BUY')+' STOP '+f2(entry)+' (aktif otomatis saat Choch terjadi)');
+if(make)armPre(A,{type:dir<0?'SELL STOP':'BUY STOP',dir,entry,sl:slp0,tp:entry+dir*risk*CONFIG.RR,src:zn+' - antisipasi Choch',zid:z.id,gr:z.grade,sid:sidp,pre:1,key:z.key,t:D[i].t,exp:D[i].t+CONFIG.PEND_BARS*SEC[ltf],info:{sh:{p:hv,t:D[hx].t},ms:{p:ms.v,t0:D[ms.p].t,t1:D[i].t},z:{kind:z.kind,type:z.type,top:z.top,bot:z.bot,t:z.t}}})}}
+return 0}
 const slp=dir<0?hv+CONFIG.SL_BUFFER:hv-CONFIG.SL_BUFFER;let bad=0;for(let m=c;m<=i;m++)if(dir<0?D[m].c>slp:D[m].c<slp){bad=1;break}
 if(bad){R.why.push('[A] Setup gagal: harga menembus swing '+(dir<0?'high':'low')+' setelah Choch');return 0}
 let j=hx;const rq=q=>dir<0?D[q].c>D[q].o:D[q].c<D[q].o;while(j>hx-5&&j>0&&!rq(j))j--;if(!rq(j))return 0;
@@ -140,7 +164,7 @@ const sid=z.id+':'+D[hx].t,tp=entry+dir*risk*CONFIG.RR,type=dir<0?'SELL LIMIT':'
 if(A.used.includes(sid)){R.sig=dir<0?'SELL':'BUY';R.stage='USED';R.why.push('[A] Setup '+zn+' sudah dipakai (Choch '+(i-c)+' candle lalu)');return 1}
 if(i-c>2){R.why.push('[A] Choch '+(i-c)+' candle lalu sudah lewat, menunggu setup baru');return 0}
 R.sig=dir<0?'SELL':'BUY';R.stage='CHOCH';R.why.push('[A] Harga masuk '+zn,'[A] Choch terkonfirmasi (close '+(dir<0?'di bawah ':'di atas ')+f2(ms.v)+')',`[A] OB LTF: ${type} ${f2(entry)} | SL ${f2(slp)} | TP ${f2(tp)} (RR 1:${CONFIG.RR})`);
-if(make){if(A.pos)R.why.push('Posisi masih terbuka: TIDAK membuka posisi baru');else if(!A.pend.length){const o={type,dir,entry,sl:slp,tp,src:zn,zid:z.id,gr:z.grade,sid,key:z.key,t:D[i].t,exp:D[i].t+CONFIG.PEND_BARS*SEC[ltf],info:{sh:{p:hv,t:D[hx].t},ms:{p:ms.v,t0:D[ms.p].t,t1:D[c].t},ob:{top:dir<0?D[j].h:D[j].o,bot:dir<0?D[j].o:D[j].l,t:D[j].t},z:{kind:z.kind,type:z.type,top:z.top,bot:z.bot,t:z.t}}};A.pend.push(o);A.used.push(sid);if(A.used.length>300)A.used.shift();nt(A,'Pending order dibuat - '+type,`Entry ${f2(entry)} | TP ${f2(tp)} | SL ${f2(slp)} | ${zn} | RR 1:${CONFIG.RR}`)}}
+if(make){if(A.pos)R.why.push('Posisi masih terbuka: TIDAK membuka posisi baru');else if(!A.pend.length||A.pend[0].pre){if(A.pend.length)nt(A,'Pending antisipasi diganti - '+A.pend[0].type,'Choch terkonfirmasi, diganti LIMIT di OB');const o={type,dir,entry,sl:slp,tp,src:zn,zid:z.id,gr:z.grade,sid,key:z.key,t:D[i].t,exp:D[i].t+CONFIG.PEND_BARS*SEC[ltf],info:{sh:{p:hv,t:D[hx].t},ms:{p:ms.v,t0:D[ms.p].t,t1:D[c].t},ob:{top:dir<0?D[j].h:D[j].o,bot:dir<0?D[j].o:D[j].l,t:D[j].t},z:{kind:z.kind,type:z.type,top:z.top,bot:z.bot,t:z.t}}};A.pend=[o];A.used.push(sid);if(A.used.length>300)A.used.shift();nt(A,'Pending order dibuat - '+type,`Entry ${f2(entry)} | TP ${f2(tp)} | SL ${f2(slp)} | ${zn} | RR 1:${CONFIG.RR}`)}}
 return 1}
 /* ---- Trigger B: area SNR/OB -> Engulfing + candle momentum -> entry market ---- */
 function engineB(A,i,hi,z,dir,R,make){const a=X.atr(14)[i],e=i-1,hn=NM[htf],zn=(z.kind=='OB'?(dir>0?'Demand OB ':'Supply OB '):'SNR ')+hn+' '+f2(z.bot)+'-'+f2(z.top)+(z.grade=='A+'?' [A+]':'');
@@ -173,7 +197,8 @@ const px=D[i].c,aL=X.atr(14)[i];
 const el=zonesFor(hi).filter(z=>usable(A,z)&&(z.kind=='OB'?(z.type==(dir>0?'D':'S')&&!broken(z,i,hi,dir)):(dir<0?px<=z.top+.5*aL:px>=z.bot-.5*aL)));
 if(!el.length){R.why.push('Belum ada area valid (OB / SNR) di '+hn+' untuk arah ini');return R}
 el.sort((a,b)=>Math.abs(px-(a.top+a.bot)/2)-Math.abs(px-(b.top+b.bot)/2));
-for(const z of el.slice(0,3)){let done=0;if(z.kind=='OB')done=engineA(A,i,hi,z,dir,R,make);if(!done&&z.grade!='OB')done=engineB(A,i,hi,z,dir,R,make);if(done)break}
+for(const z of el.slice(0,3)){let done=0;if(z.kind=='OB')done=engineA(A,i,hi,z,dir,R,make);if(!done&&z.grade!='OB')done=engineB(A,i,hi,z,dir,R,make);if(!done&&z.grade!='OB'&&CONFIG.PRE_ORDER)done=armB(A,i,hi,z,dir,R,make);if(done)break}
+if(make&&A.pend[0]&&A.pend[0].pre&&A.pend[0].sid!==R.armed){nt(A,'Pending antisipasi dibatalkan - '+A.pend[0].type,f2(A.pend[0].entry)+': setup berubah');A.pend=[]}
 return R}
 function managePend(A,i,hi){const tr=trend(hi);A.pend=A.pend.filter(o=>{let w=null;if(D[i].t>=o.exp)w='kedaluwarsa';else if(o.dir<0?D[i].c>o.sl:D[i].c<o.sl)w='harga menembus SL sebelum entry terisi';else if(tr!==o.dir)w='tren HTF berubah';else if(o.dir<0?D[i].c>o.key:D[i].c<o.key)w='harga break key level';if(w){nt(A,'Pending dibatalkan - '+o.type,f2(o.entry)+': '+w);return false}return true})}
 const cycle=(A,i,hi)=>{managePend(A,i,hi);scan(A,i,hi,true)};
@@ -182,8 +207,8 @@ const nt=(A,t,b)=>{if(A.live&&!quiet)notify(t,b)};
 function manage(A,h,l,j){const p=A.pos;if(!p)return;if(p.dir>0){if(l<=p.sl)closeP(A,p.sl,'SL',j);else if(h>=p.tp)closeP(A,p.tp,'TP',j)}else{if(h>=p.sl)closeP(A,p.sl,'SL',j);else if(l<=p.tp)closeP(A,p.tp,'TP',j)}}
 function closeP(A,px,why,j){const p=A.pos,pnl=(px-p.entry)*p.dir*100*p.lot;A.bal+=pnl;A.trades.push({...p,exit:px,pnl,why,j,tj:D[j].t});A.pos=null;if(why=='SL'&&p.zid)zs(A,p.zid).s++;A.cl=why=='SL'?(A.cl||0)+1:0;if(A.cl>=CONFIG.LOSS_PAUSE){A.cl=0;A.pauseUntil=D[j].t+SEC[htf];nt(A,'Jeda trading',CONFIG.LOSS_PAUSE+'x SL beruntun. Robot berhenti membuat setup baru sampai candle '+NM[htf]+' berikutnya.')}
 nt(A,(why=='TP'?'Take Profit tersentuh':why=='SL'?'Stop Loss tersentuh':'Posisi ditutup ('+why+')')+' - XAU/USD',`${p.dir>0?'BUY':'SELL'} ${f2(p.entry)} -> ${f2(px)} | ${pnl>=0?'+':'-'}$${f2(Math.abs(pnl))} | Balance $${f2(A.bal)}`)}
-function fillPend(A,h,l,j){const o=A.pend[0];if(!o||A.pos||D[j].t<=o.t)return 0;if(!(o.dir>0?l<=o.entry:h>=o.entry))return 0;
-const lot=lotFor(A,o.entry,o.sl,o.gr);A.pos={dir:o.dir,entry:o.entry,sl:o.sl,tp:o.tp,lot,i:j,t:D[j].t,via:o.type,zid:o.zid,gr:o.gr,info:o.info};A.pend=[];zs(A,o.zid).e++;
+function fillPend(A,h,l,j){const o=A.pend[0];if(!o||A.pos||D[j].t<=o.t)return 0;const lim=o.type.includes('LIMIT');if(!(lim?(o.dir>0?l<=o.entry:h>=o.entry):(o.dir>0?h>=o.entry:l<=o.entry)))return 0;
+const lot=lotFor(A,o.entry,o.sl,o.gr,o.pre?CONFIG.PRE_RISK:1);A.pos={dir:o.dir,entry:o.entry,sl:o.sl,tp:o.tp,lot,i:j,t:D[j].t,via:o.type+(o.pre?' (antisipasi)':''),zid:o.zid,gr:o.gr,info:o.info};A.pend=[];zs(A,o.zid).e++;
 nt(A,o.type+' terisi - XAU/USD',`Entry ${f2(o.entry)} | TP ${f2(o.tp)} | SL ${f2(o.sl)} | ${lot} lot`);return 1}
 function step(A,h,l,j){manage(A,h,l,j);if(!A.pos&&fillPend(A,h,l,j))manage(A,h,l,j)}
 function stats(A){const t=A.trades,w=t.filter(x=>x.pnl>0),gw=w.reduce((a,x)=>a+x.pnl,0),gl=-t.filter(x=>x.pnl<=0).reduce((a,x)=>a+x.pnl,0);let e=A.b0,pk=e,dd=0;t.forEach(x=>{e+=x.pnl;pk=Math.max(pk,e);dd=Math.max(dd,(pk-e)/pk*100)});return{n:t.length,wr:t.length?w.length/t.length*100:0,pf:gl?gw/gl:gw?99:0,dd,net:A.bal-A.b0}}
@@ -223,8 +248,8 @@ live=1;st.className='pill live';st.textContent='LIVE XAU/USD';setMsg(null);calc(
 catch(e){D=[];H=[];st.className='pill err';st.textContent='BELUM TERHUBUNG';setMsg('<b>Gagal terhubung</b><p>'+explain(e)+'</p><p>'+tech(e)+'</p><div class="row"><button class="go" id="m1">Coba lagi</button><button id="m2">Lihat data demo</button></div>');$('#m1').onclick=connect;$('#m2').onclick=startDemo}
 dirty=1}
 /* ============ 4. TAMPILAN ============ */
-function showSig(){if(!D.length||H.length<210)return;const R=scan(A,D.length-2,lastH(),false);let sig=R.sig,txt=({WAIT_ZONE:'Menunggu harga masuk zona',IN_ZONE:'Di zona, menunggu Choch',CHOCH:'Setup terkonfirmasi',USED:'Setup sudah dipakai'})[R.stage]||'Menunggu setup',pct=({WAIT_ZONE:25,IN_ZONE:60,CHOCH:100,USED:100})[R.stage]||0;
-if(A.pend.length){sig=A.pend[0].dir>0?'BUY':'SELL';txt='Order limit menunggu terisi';pct=100;R.why.push('Order '+A.pend[0].type+' aktif @ '+f2(A.pend[0].entry))}
+function showSig(){if(!D.length||H.length<210)return;const R=scan(A,D.length-2,lastH(),false);let sig=R.sig,txt=({WAIT_ZONE:'Menunggu harga masuk zona',IN_ZONE:'Di zona, menunggu konfirmasi',ARMED:'Menunggu momen terakhir (pending antisipasi siap)',CHOCH:'Setup terkonfirmasi',USED:'Setup sudah dipakai'})[R.stage]||'Menunggu setup',pct=({WAIT_ZONE:25,IN_ZONE:60,ARMED:85,CHOCH:100,USED:100})[R.stage]||0;
+if(A.pend.length){sig=A.pend[0].dir>0?'BUY':'SELL';txt=A.pend[0].pre?'Pending antisipasi menunggu konfirmasi':'Order limit menunggu terisi';pct=A.pend[0].pre?85:100;R.why.push('Order '+A.pend[0].type+' aktif @ '+f2(A.pend[0].entry))}
 if(A.pos){sig=A.pos.dir>0?'BUY':'SELL';txt='Posisi terbuka';pct=100;R.why.push('Aturan: ada posisi terbuka, robot TIDAK membuka posisi baru')}
 sg={sig};const col=sig=='BUY'?'var(--up)':sig=='SELL'?'var(--dn)':'var(--ac)';$('#sg').textContent=sig;$('#sg').style.color=col;$('#cf').style.cssText=`width:${pct}%;background:${col}`;$('#cft').textContent=txt;$('#why').innerHTML=R.why.map(t=>`<li>${t}</li>`).join('')}
 function fit(c){const r=c.getBoundingClientRect(),d=devicePixelRatio||1,W=Math.round(r.width*d),Hh=Math.round(r.height*d);if(c.width!=W||c.height!=Hh){c.width=W;c.height=Hh}const x=c.getContext('2d');x.setTransform(d,0,0,d,0,0);x.clearRect(0,0,r.width,r.height);return{x,w:r.width,h:r.height}}
@@ -253,7 +278,7 @@ for(let i=i0;i<=i1;i++){const d=D[i],c=d.c>=d.o?UP:DN,xx=Math.round(XX(i))+.5;x.
 [[CONFIG.EMA_FAST,'#f5c542'],[CONFIG.EMA_SLOW,TX]].forEach(([pp,c])=>{const a=X.ema(pp);x.strokeStyle=c;x.lineWidth=1.5;x.beginPath();for(let i=i0;i<=i1;i++)i==i0?x.moveTo(XX(i),Y(a[i])):x.lineTo(XX(i),Y(a[i]));x.stroke();x.lineWidth=1});
 const mk=(i,dir,c)=>{if(i<i0||i>i1)return;const xx=XX(i),y=dir>0?Y(D[i].l)+13:Y(D[i].h)-13;x.fillStyle=c;x.beginPath();x.moveTo(xx,dir>0?y-9:y+9);x.lineTo(xx-6,dir>0?y+3:y-3);x.lineTo(xx+6,dir>0?y+3:y-3);x.fill()};
 A.trades.forEach(t=>mk(t.i,t.dir,t.dir>0?UP:DN));if(p)mk(p.i,p.dir,p.dir>0?UP:DN);
-const lines=P?[[(p?'ENTRY ':'')+(P.via||P.type)+(P.gr?' ['+P.gr+']':''),P.entry,p?'#4aa3ff':'#f59e0b'],['TP',P.tp,UP],['SL',P.sl,DN]]:[];
+const lines=P?[[(p?'ENTRY ':'')+(P.via||P.type)+(P.pre&&!p?' antisipasi':'')+(P.gr?' ['+P.gr+']':''),P.entry,p?'#4aa3ff':'#f59e0b'],['TP',P.tp,UP],['SL',P.sl,DN]]:[];
 lines.forEach(([l,v,c],k)=>{x.strokeStyle=x.fillStyle=c;x.lineWidth=1.4;x.setLineDash(p?[6,4]:[3,4]);x.beginPath();x.moveTo(0,Y(v));x.lineTo(W,Y(v));x.stroke();x.setLineDash([]);x.lineWidth=1;x.fillText(l+' '+f2(v),6,Y(v)-4)});
 x.restore();
 lines.forEach(([l,v,c])=>{const y=Y(v);if(y<0||y>h)return;x.fillStyle=c;x.fillRect(W,y-8,PR,16);x.fillStyle='#fff';x.fillText(f2(v),W+5,y+4)});
@@ -262,7 +287,7 @@ const hv=mouse&&mouse.x<W?Math.min(D.length-1,Math.max(0,Math.round((mouse.x-bw/
 if(mouse&&mouse.x<W&&hv>=i0&&hv<=i1){x.strokeStyle=MU;x.setLineDash([3,3]);x.beginPath();x.moveTo(XX(hv),0);x.lineTo(XX(hv),h);x.stroke();x.setLineDash([])}
 ui()}
 function ui(){const L=D[D.length-1],s=stats(A),E=eq(A),p=A.pos,cl=v=>v>=0?'up':'dn',ch=L.c-D[Math.max(0,D.length-97)].c;$('#px').textContent=f2(L.c);$('#chg').innerHTML=`<span class="${cl(ch)}">${ch>=0?'+':'-'}${f2(Math.abs(ch))}</span>`;
-const pk=JSON.stringify([A.pend.map(o=>[o.type,o.entry]),botOn,D.length]);if(pk!=ui.pk){ui.pk=pk;$('#pd').innerHTML=A.pend.length?'<table><tr><th>Tipe</th><th>Entry</th><th>TP</th><th>SL</th><th>RR</th></tr>'+A.pend.map(o=>`<tr><td class="${o.dir>0?'up':'dn'}">${o.type}</td><td>${f2(o.entry)}</td><td>${f2(o.tp)}</td><td>${f2(o.sl)}</td><td>1:${(Math.abs(o.tp-o.entry)/Math.abs(o.entry-o.sl)).toFixed(1)}</td></tr><tr><td colspan="5"><small>${o.src} · sisa ${Math.max(0,Math.round((o.exp-D[D.length-1].t)/SEC[ltf]))} candle</small></td></tr>`).join('')+'</table>':'<small>'+(botOn?'Belum ada order. Robot menunggu harga masuk zona dan Choch.':'Nyalakan bot untuk memasang order limit otomatis.')+'</small>'}
+const pk=JSON.stringify([A.pend.map(o=>[o.type,o.entry]),botOn,D.length]);if(pk!=ui.pk){ui.pk=pk;$('#pd').innerHTML=A.pend.length?'<table><tr><th>Tipe</th><th>Entry</th><th>TP</th><th>SL</th><th>RR</th></tr>'+A.pend.map(o=>`<tr><td class="${o.dir>0?'up':'dn'}">${o.type}</td><td>${f2(o.entry)}</td><td>${f2(o.tp)}</td><td>${f2(o.sl)}</td><td>1:${(Math.abs(o.tp-o.entry)/Math.abs(o.entry-o.sl)).toFixed(1)}</td></tr><tr><td colspan="5"><small>${o.src}${o.pre?' (lot '+Math.round(CONFIG.PRE_RISK*100)+'%)':''} · sisa ${Math.max(0,Math.round((o.exp-D[D.length-1].t)/SEC[ltf]))} candle</small></td></tr>`).join('')+'</table>':'<small>'+(botOn?'Belum ada order. Robot menunggu harga masuk zona dan Choch.':'Nyalakan bot untuk memasang order limit otomatis.')+'</small>'}
 $('#bot').textContent=botOn?'STOP BOT':'START BOT';$('#bot').className=botOn?'stop':'go';
 $('#pos').innerHTML=p?`<b class="${p.dir>0?'up':'dn'}">${p.dir>0?'BUY':'SELL'} ${p.lot} lot</b> · <b class="${cl(E-A.bal)}">${E-A.bal>=0?'+':''}$${f2(E-A.bal)}</b><br><small>Entry ${f2(p.entry)} · TP ${f2(p.tp)} · SL ${f2(p.sl)}</small>`:`<small>${botOn?'Bot aktif, belum ada posisi.':'Bot OFF - tekan START BOT untuk mulai'}</small>`;
 $('#kv').innerHTML=[['Balance','$'+f2(A.bal)],['Equity','$'+f2(E)],['Net P/L',(s.net>=0?'+':'')+'$'+f2(s.net),cl(s.net)],['Trade',s.n],['Win rate',s.wr.toFixed(0)+'%'],['Profit factor',s.pf.toFixed(2)]].map(([a,b,c])=>`<div><small>${a}</small><b class="${c||''}">${b}</b></div>`).join('');
