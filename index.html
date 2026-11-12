@@ -238,7 +238,7 @@ function startDemo(){live=0;demo();calc();resetView();setMsg(null);const st=$('#
 function setMsg(h){const m=$('#msg');m.style.display=h?'flex':'none';m.innerHTML=h?`<div>${h}</div>`:''}
 function explain(e){const m=e.message||String(e);if(e instanceof TypeError||/fetch|network|load failed/i.test(m))return 'Browser tidak bisa menjangkau api.twelvedata.com. Biasanya karena file dibuka di dalam aplikasi lain atau internet mati. Buka lewat Chrome.';return 'Twelve Data menjawab: '+m}
 const tech=e=>`<small>Detail teknis: ${e.name||'Error'} - ${e.message||e} | protokol ${typeof location!='undefined'?location.protocol:'?'} | online ${typeof navigator!='undefined'?navigator.onLine:'?'} | key ${(KEY||'-').slice(0,4)}...</small>`;
-async function connect(){pair=$('#tf').value;[htf,ltf]=PAIRS[pair];try{localStorage.setItem('pair',pair)}catch(e){}live=0;clearInterval(pv);botOn=0;A=mkA(1);lastN=-1;D=[];H=[];sg=null;const st=$('#st');st.className='pill';st.textContent='MENGHUBUNGKAN';$('#info').textContent='';
+async function connect(){pair=$('#tf').value;[htf,ltf]=PAIRS[pair];try{localStorage.setItem('pair',pair)}catch(e){}live=0;clearInterval(pv);botOn=0;A=mkA(1);lastN=-1;D=[];H=[];sg=null;PLAN=null;const st=$('#st');st.className='pill';st.textContent='MENGHUBUNGKAN';$('#info').textContent='';
 setMsg('<b>Mengambil data XAU/USD '+NM[htf]+' dan '+NM[ltf]+' dari Twelve Data...</b>');$('#sg').textContent='-';$('#sg').style.color='';$('#why').innerHTML='';$('#cf').style.width='0';$('#cft').textContent='';$('#pos').innerHTML='';dirty=1;
 try{let er,ok=0;const ks=[];try{ks.push(localStorage.getItem('td_key'))}catch(e){}ks.push(...CONFIG.API_KEYS);
 if(!ks.filter(Boolean).length){st.className='pill err';st.textContent='BUTUH API KEY';setMsg('<b>Masukkan API key Twelve Data</b><p>Cukup sekali. Key disimpan di HP ini saja, tidak ikut ke GitHub.</p><div class="row" style="justify-content:center"><input id="mk" placeholder="API key" style="background:var(--pn2);color:var(--tx);border:1px solid var(--bd);border-radius:9px;padding:8px;min-width:0"><button class="go" id="mb">Simpan &amp; hubungkan</button></div>');$('#mb').onclick=()=>{const v=$('#mk').value.trim();if(v){try{localStorage.setItem('td_key',v)}catch(e){}connect()}};dirty=1;return}
@@ -248,9 +248,13 @@ live=1;st.className='pill live';st.textContent='LIVE XAU/USD';setMsg(null);calc(
 catch(e){D=[];H=[];st.className='pill err';st.textContent='BELUM TERHUBUNG';setMsg('<b>Gagal terhubung</b><p>'+explain(e)+'</p><p>'+tech(e)+'</p><div class="row"><button class="go" id="m1">Coba lagi</button><button id="m2">Lihat data demo</button></div>');$('#m1').onclick=connect;$('#m2').onclick=startDemo}
 dirty=1}
 /* ============ 4. TAMPILAN ============ */
-function showSig(){if(!D.length||H.length<210)return;const R=scan(A,D.length-2,lastH(),false);let sig=R.sig,txt=({WAIT_ZONE:'Menunggu harga masuk zona',IN_ZONE:'Di zona, menunggu konfirmasi',ARMED:'Menunggu momen terakhir (pending antisipasi siap)',CHOCH:'Setup terkonfirmasi',USED:'Setup sudah dipakai'})[R.stage]||'Menunggu setup',pct=({WAIT_ZONE:25,IN_ZONE:60,ARMED:85,CHOCH:100,USED:100})[R.stage]||0;
+var PLAN=null; // rencana order (pratinjau) saat setup sudah terbentuk tetapi order belum dibuat / bot OFF
+function showSig(){if(!D.length||H.length<210)return;
+PLAN=null;if(!A.pos&&!A.pend.length){const T=JSON.parse(JSON.stringify(A));T.live=0;try{scan(T,D.length-2,lastH(),true)}catch(e){}PLAN=T.pend[0]||(T.pos?{...T.pos,type:'MARKET'}:null)}
+const R=scan(A,D.length-2,lastH(),false);let sig=R.sig,txt=({WAIT_ZONE:'Menunggu harga masuk zona',IN_ZONE:'Di zona, menunggu konfirmasi',ARMED:'Menunggu momen terakhir (pending antisipasi siap)',CHOCH:'Setup terkonfirmasi',USED:'Setup sudah dipakai'})[R.stage]||'Menunggu setup',pct=({WAIT_ZONE:25,IN_ZONE:60,ARMED:85,CHOCH:100,USED:100})[R.stage]||0;
 if(A.pend.length){sig=A.pend[0].dir>0?'BUY':'SELL';txt=A.pend[0].pre?'Pending antisipasi menunggu konfirmasi':'Order limit menunggu terisi';pct=A.pend[0].pre?85:100;R.why.push('Order '+A.pend[0].type+' aktif @ '+f2(A.pend[0].entry))}
 if(A.pos){sig=A.pos.dir>0?'BUY':'SELL';txt='Posisi terbuka';pct=100;R.why.push('Aturan: ada posisi terbuka, robot TIDAK membuka posisi baru')}
+else if(PLAN&&!A.pend.length)R.why.push('Rencana order (pratinjau di chart, bot OFF): '+PLAN.type+' @ '+f2(PLAN.entry)+' | TP '+f2(PLAN.tp)+' | SL '+f2(PLAN.sl));
 sg={sig};const col=sig=='BUY'?'var(--up)':sig=='SELL'?'var(--dn)':'var(--ac)';$('#sg').textContent=sig;$('#sg').style.color=col;$('#cf').style.cssText=`width:${pct}%;background:${col}`;$('#cft').textContent=txt;$('#why').innerHTML=R.why.map(t=>`<li>${t}</li>`).join('')}
 function fit(c){const r=c.getBoundingClientRect(),d=devicePixelRatio||1,W=Math.round(r.width*d),Hh=Math.round(r.height*d);if(c.width!=W||c.height!=Hh){c.width=W;c.height=Hh}const x=c.getContext('2d');x.setTransform(d,0,0,d,0,0);x.clearRect(0,0,r.width,r.height);return{x,w:r.width,h:r.height}}
 const V={s:0,bw:8,z:1},PRW=58,cw=()=>Math.max(50,$('#cv').getBoundingClientRect().width-PRW);
@@ -259,9 +263,9 @@ function clampV(){if(!(V.bw>=2))V.bw=8;V.bw=Math.min(40,V.bw);const w=cw()/V.bw;
 function zoomAt(px,f){const i=(px-V.bw/2)/V.bw+V.s;V.bw=Math.min(40,Math.max(2,V.bw*f));V.s=i-(px-V.bw/2)/V.bw;clampV();dirty=1}
 const chartZones=()=>{const hi=lastH();if(hi<210)return[];const dir=trend(hi),px=D[D.length-1].c,aL=X.atr(14)[D.length-1];return zonesFor(hi).filter(z=>usable(A,z)&&(z.kind=='OB'?(z.type==(dir>0?'D':'S')&&!broken(z,D.length-2,hi,dir)):(dir<0?px<=z.top+.5*aL:px>=z.bot-.5*aL))).slice(0,5)};
 function draw(){dirty=0;if(!D.length){fit($('#cv'));return}clampV();
-const cs=getComputedStyle(document.documentElement),g=n=>cs.getPropertyValue(n).trim(),UP=g('--up'),DN=g('--dn'),GR=g('--bd'),MU=g('--mu'),TX=g('--tx'),m=fit($('#cv')),x=m.x,PR=PRW,W=m.w-PR,bw=V.bw,h=m.h,i0=Math.max(0,Math.floor(V.s)),i1=Math.min(D.length-1,Math.ceil(V.s+W/bw)),p=A.pos,PD=!p?A.pend:[],S=(p||PD[0]||{}).info,P=p||PD[0];
+const cs=getComputedStyle(document.documentElement),g=n=>cs.getPropertyValue(n).trim(),UP=g('--up'),DN=g('--dn'),GR=g('--bd'),MU=g('--mu'),TX=g('--tx'),m=fit($('#cv')),x=m.x,PR=PRW,W=m.w-PR,bw=V.bw,h=m.h,i0=Math.max(0,Math.floor(V.s)),i1=Math.min(D.length-1,Math.ceil(V.s+W/bw)),p=A.pos,PD=!p?A.pend:[],PV=!p&&!PD.length?PLAN:null,P=p||PD[0]||PV,S=(P||{}).info;
 let lo=1e9,hi=-1e9;for(let i=i0;i<=i1;i++){lo=Math.min(lo,D[i].l);hi=Math.max(hi,D[i].h)}if(lo>hi){lo=D[D.length-1].l;hi=D[D.length-1].h}
-if(P&&i1>=D.length-2){lo=Math.min(lo,P.sl,P.tp,P.entry);hi=Math.max(hi,P.sl,P.tp,P.entry)}const pd=(hi-lo)*.07||1;lo-=pd;hi+=pd;
+if(P){lo=Math.min(lo,P.sl,P.tp,P.entry);hi=Math.max(hi,P.sl,P.tp,P.entry)}const pd=(hi-lo)*.07||1;lo-=pd;hi+=pd;
 const XX=i=>(i-V.s)*bw+bw/2,Y=v=>12+(hi-v)/(hi-lo)*(h-24),bx=t=>Math.max(-5,XX(tIdx(t))-bw/2);x.font='11px system-ui';
 for(let k=0;k<=5;k++){const v=lo+(hi-lo)*k/5,y=Math.round(Y(v))+.5;x.strokeStyle=GR;x.beginPath();x.moveTo(0,y);x.lineTo(W,y);x.stroke();x.fillStyle=MU;x.fillText(f2(v),W+6,y+4)}
 x.save();x.beginPath();x.rect(0,0,W,h);x.clip();
@@ -273,13 +277,14 @@ const ky=Y(z.key);x.strokeStyle='#b388ff';x.setLineDash([2,4]);x.beginPath();x.m
 if(V.z&&S&&S.ob){const ob=S.ob,xo=bx(ob.t),xa=XX(tIdx(S.ms.t0)),xb=XX(tIdx(S.ms.t1)),ym=Y(S.ms.p);x.fillStyle='rgba(45,212,191,.28)';x.fillRect(xo,Y(ob.top),W-xo,Math.max(2,Y(ob.bot)-Y(ob.top)));x.fillStyle=TX;x.fillText('OB Low TF',Math.max(4,xo+4),Y(ob.top)-3);
 x.strokeStyle=TX;x.lineWidth=1.4;x.beginPath();x.moveTo(xa,ym);x.lineTo(xb+bw,ym);x.stroke();x.lineWidth=1;x.fillStyle=TX;x.fillText('Choch',xa,ym+(P&&P.dir<0?13:-4))}
 if(V.z&&S&&S.eg){const k=tIdx(S.eg.t),xx=XX(k),d=D[Math.min(k,D.length-1)];x.strokeStyle='#e040fb';x.lineWidth=1.6;x.beginPath();x.arc(xx,Y((d.h+d.l)/2),Math.max(8,bw*1.6),0,6.283);x.stroke();x.lineWidth=1;x.fillStyle='#e040fb';x.fillText((S.eg.dir<0?'Bearish':'Bullish')+' Engulfing + Momentum',Math.max(4,xx-40),Y(S.eg.dir<0?d.h:d.l)+(S.eg.dir<0?-14:24))}
-if(P){const x0=Math.max(0,XX(P.i>=0?P.i:i0)-bw/2),yE=Y(P.entry);[[P.tp,UP],[P.sl,DN]].forEach(([v,c])=>{const y=Y(v);x.fillStyle=c+'26';x.fillRect(x0,Math.min(yE,y),W-x0,Math.abs(y-yE))})}
+if(P){const x0=Math.max(0,XX(P.i>=0?P.i:tIdx(P.t))-bw/2),yE=Y(P.entry);[[P.tp,UP],[P.sl,DN]].forEach(([v,c])=>{const y=Y(v);x.fillStyle=c+'26';x.fillRect(x0,Math.min(yE,y),W-x0,Math.abs(y-yE))})}
 for(let i=i0;i<=i1;i++){const d=D[i],c=d.c>=d.o?UP:DN,xx=Math.round(XX(i))+.5;x.strokeStyle=x.fillStyle=c;x.beginPath();x.moveTo(xx,Y(d.h));x.lineTo(xx,Y(d.l));x.stroke();x.fillRect(xx-bw*.35,Y(Math.max(d.o,d.c)),Math.max(1,bw*.7),Math.max(1,Math.abs(Y(d.o)-Y(d.c))))}
 [[CONFIG.EMA_FAST,'#f5c542'],[CONFIG.EMA_SLOW,TX]].forEach(([pp,c])=>{const a=X.ema(pp);x.strokeStyle=c;x.lineWidth=1.5;x.beginPath();for(let i=i0;i<=i1;i++)i==i0?x.moveTo(XX(i),Y(a[i])):x.lineTo(XX(i),Y(a[i]));x.stroke();x.lineWidth=1});
 const mk=(i,dir,c)=>{if(i<i0||i>i1)return;const xx=XX(i),y=dir>0?Y(D[i].l)+13:Y(D[i].h)-13;x.fillStyle=c;x.beginPath();x.moveTo(xx,dir>0?y-9:y+9);x.lineTo(xx-6,dir>0?y+3:y-3);x.lineTo(xx+6,dir>0?y+3:y-3);x.fill()};
 A.trades.forEach(t=>mk(t.i,t.dir,t.dir>0?UP:DN));if(p)mk(p.i,p.dir,p.dir>0?UP:DN);
-const lines=P?[[(p?'ENTRY ':'')+(P.via||P.type)+(P.pre&&!p?' antisipasi':'')+(P.gr?' ['+P.gr+']':''),P.entry,p?'#4aa3ff':'#f59e0b'],['TP',P.tp,UP],['SL',P.sl,DN]]:[];
-lines.forEach(([l,v,c],k)=>{x.strokeStyle=x.fillStyle=c;x.lineWidth=1.4;x.setLineDash(p?[6,4]:[3,4]);x.beginPath();x.moveTo(0,Y(v));x.lineTo(W,Y(v));x.stroke();x.setLineDash([]);x.lineWidth=1;x.fillText(l+' '+f2(v),6,Y(v)-4)});
+const lines=P?[[(p?'ENTRY ':PV?'PLAN ':'PENDING ')+(P.via||P.type)+(P.pre&&!p?' antisipasi':'')+(P.gr?' ['+P.gr+']':''),P.entry,p?'#4aa3ff':'#f59e0b'],['TP',P.tp,UP],['SL',P.sl,DN]]:[];
+lines.forEach(([l,v,c])=>{x.strokeStyle=c;x.lineWidth=1.6;x.setLineDash(p?[6,4]:[3,4]);x.beginPath();x.moveTo(0,Y(v));x.lineTo(W,Y(v));x.stroke();x.setLineDash([]);x.lineWidth=1;const t=l+' '+f2(v),tw=x.measureText(t).width+10;x.fillStyle=c;x.fillRect(4,Y(v)-17,tw,16);x.fillStyle='#fff';x.fillText(t,9,Y(v)-5)});
+if(P&&!p){const xx=XX(tIdx(P.t)),y=Y(P.entry);x.fillStyle='#f59e0b';x.beginPath();x.moveTo(xx,y);x.lineTo(xx-8,y-7);x.lineTo(xx-8,y+7);x.fill()}
 x.restore();
 lines.forEach(([l,v,c])=>{const y=Y(v);if(y<0||y>h)return;x.fillStyle=c;x.fillRect(W,y-8,PR,16);x.fillStyle='#fff';x.fillText(f2(v),W+5,y+4)});
 const L=D[D.length-1],ly=Y(L.c);if(ly>=0&&ly<=h){x.fillStyle=L.c>=L.o?UP:DN;x.fillRect(W,ly-9,PR,18);x.fillStyle='#fff';x.fillText(f2(L.c),W+5,ly+4)}
