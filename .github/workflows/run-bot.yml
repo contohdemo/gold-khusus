@@ -1,0 +1,28 @@
+name: Sinyal XAUUSD
+
+on:
+  schedule:
+    - cron: '0 * * * *' # Bot jalan otomatis tiap 1 jam
+  workflow_dispatch: # Tombol buat ngetes manual kapan aja
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Run Trading Bot
+        env:
+          TD_API_KEY: ${{ secrets.TD_API_KEY }}
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+        run: node bot.js
