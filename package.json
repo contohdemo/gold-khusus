@@ -1,0 +1,12 @@
+{
+  "name": "gold-robot-bot",
+  "version": "1.0.0",
+  "description": "Automated XAU/USD Bot with MA 3/20 Crossover",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js"
+  },
+  "dependencies": {
+    "node-fetch": "^2.6.7"
+  }
+}
